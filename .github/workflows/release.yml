@@ -1,0 +1,167 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # required to create GitHub releases
+
+jobs:
+  # ── 1. Build ──────────────────────────────────────────────────────────────
+  build:
+    name: Build (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Intel runner — binary runs on all Macs (Rosetta 2 on Apple Silicon)
+          - os: macos-15-intel
+            platform: macos
+            binary: AtelierGABC
+          - os: windows-latest
+            platform: windows
+            binary: AtelierGABC.exe
+          - os: ubuntu-latest
+            platform: linux
+            binary: AtelierGABC
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: System dependencies (Linux)
+        if: matrix.platform == 'linux'
+        run: sudo apt-get install -y python3-tk
+
+      - name: Install Python dependencies
+        run: pip install ".[build]"
+
+      - name: Set up .NET (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        continue-on-error: true
+        run: |
+          # setup-dotnet fails on Intel runners; brew is reliable across both.
+          brew install dotnet@10 2>/dev/null || true
+          brew link --overwrite dotnet 2>/dev/null || true
+          BREW_DOTNET="$(brew --prefix dotnet 2>/dev/null || echo '')"
+          if [ -n "$BREW_DOTNET" ] && [ -d "$BREW_DOTNET/libexec" ]; then
+            echo "DOTNET_ROOT=$BREW_DOTNET/libexec" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install vpk CLI
+        shell: bash
+        run: |
+          dotnet tool install -g vpk --prerelease
+          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+
+      - name: Build & pack
+        run: python build.py
+
+      - name: Upload Velopack release files
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.platform }}
+          path: releases/
+
+      - name: Upload binary for smoke test
+        uses: actions/upload-artifact@v7
+        with:
+          name: binary-${{ matrix.platform }}
+          path: dist/AtelierGABC/
+
+  # ── 2. Smoke test (clean OS, no Python required) ─────────────────────────
+  smoke-test:
+    name: Smoke test (${{ matrix.platform }})
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15-intel
+            platform: macos
+            binary: AtelierGABC
+          - os: windows-latest
+            platform: windows
+            binary: AtelierGABC.exe
+          - os: ubuntu-latest
+            platform: linux
+            binary: AtelierGABC
+
+    steps:
+      - name: Download binary
+        uses: actions/download-artifact@v8
+        with:
+          name: binary-${{ matrix.platform }}
+          path: app-bundle/
+
+      - name: Make executable (macOS/Linux)
+        if: matrix.platform != 'windows'
+        run: chmod +x app-bundle/${{ matrix.binary }}
+
+      - name: Start app (macOS/Linux)
+        if: matrix.platform != 'windows'
+        shell: bash
+        run: |
+          "app-bundle/${{ matrix.binary }}" &
+          echo "APP_PID=$!" >> $GITHUB_ENV
+
+      - name: Start app (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $proc = Start-Process -FilePath "app-bundle\${{ matrix.binary }}" -PassThru
+          "APP_PID=$($proc.Id)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Wait for HTTP server
+        shell: bash
+        run: |
+          echo "Polling http://localhost:5173/ ..."
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>/dev/null || echo 0)
+            if [ "$code" = "200" ]; then
+              echo "App responded (attempt $i/30)"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "App did not respond within 30 seconds"
+          exit 1
+
+      - name: Stop app (macOS/Linux)
+        if: always() && matrix.platform != 'windows'
+        shell: bash
+        run: kill $APP_PID 2>/dev/null || true
+
+      - name: Stop app (Windows)
+        if: always() && matrix.platform == 'windows'
+        shell: pwsh
+        run: Stop-Process -Id $env:APP_PID -Force -ErrorAction SilentlyContinue
+
+  # ── 3. Release (only if all smoke tests pass) ────────────────────────────
+  release:
+    name: Publish GitHub release
+    needs: smoke-test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: all-releases/
+
+      - name: Create release
+        uses: softprops/action-gh-release@v3
+        with:
+          name: ${{ github.ref_name }}
+          files: all-releases/**
+          generate_release_notes: true

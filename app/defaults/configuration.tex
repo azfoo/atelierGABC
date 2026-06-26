@@ -1,0 +1,87 @@
+\usepackage{fontspec}
+\usepackage{gregoriotex}
+\usepackage{graphicx}
+
+
+
+\input{frpunct.tex}
+\setmainfont[Numbers=OldStyle]{Adobe Garamond Pro}
+\newfontfamily{\GregPlantin}[
+	BoldFont = GregPlantin Bold,
+	ItalicFont = GregPlantin Italic,
+	BoldItalicFont = GregPlantin Bolditalic]
+		{GregPlantin Regular}
+\newfontfamily{\GaramondPro}[Numbers=OldStyle]{AGaramondPro-Regular}
+\newfontfamily{\GaramondProIt}{AGaramondPro-Italic}
+\newfontfamily{\GaramondProBd}{AGaramondPro-Bold}
+\newfontfamily{\GaramondProBdIt}{AGaramondPro-BoldItalic}
+\newfontfamily{\GaramondProSmBd}{AGaramondPro-Semibold}
+\newfontfamily{\GaramondProSmBdIt}{AGaramondPro-SemiboldItalic}
+
+\newfontfamily{\GaramondPremierPro}[Numbers=OldStyle]{Garamond Premier Pro}
+\newfontfamily{\GaramondPremierProCaption}[Numbers=OldStyle]{GaramondPremrPro-Capt}
+\newfontfamily{\GaramondPremierProMediumCaption}[Numbers=OldStyle]{GaramondPremrPro-MedCapt}
+\newfontfamily{\GaramondPremierProItCaption}[Numbers=OldStyle]{GaramondPremrPro-ItCapt}
+\newfontfamily{\GaramondPremierProIt}{GaramondPremrPro-It}
+\newfontfamily{\GaramondPremierProBd}{GaramondPremrPro-Bd}
+\newfontfamily{\GaramondPremierProMediumIt}{GaramondPremrPro-MedIt}
+\newfontfamily{\ItcLeawoodStd}{ItcLeawoodStd}
+\usepackage{pifont}
+\definecolor{rougeliturgique}{cmyk}{0,1,0,0}
+
+\renewcommand{\Rbar}{\textbf{\color{rougeliturgique}\GregPlantin\symbol{164}}}
+\renewcommand{\Vbar}{\textbf{\color{rougeliturgique}\GregPlantin\symbol{8730}}}
+
+\renewcommand{\GreDagger}{\textrm{\color{rougeliturgique}\ItcLeawoodStd †}}
+
+
+\catcode`\®=\active
+\def®{\Rbar}
+\catcode`\√=\active
+\def√{\Vbar}
+
+
+\def\espacefine{\hspace{0.035cm}}
+
+
+\def\GreStar{
+{\color{rougeliturgique}\tiny\raisebox{1.5ex}{\ding{72}}}%
+  \relax%
+}%
+
+%changer la position du mode
+\grechangedim{annotationraise}{-3mm}{scalable}
+
+\grechangestyle{initial}{\fontsize{36}{50}\color{rougeliturgique}\fontspec{Adobe Garamond Pro}}
+
+\hoffset-1in
+\voffset-1in
+\newbox\scorebox
+
+\gresetheadercapture{commentary}{grecommentary}{}
+
+\grechangestyle{commentary}{\color{rougeliturgique}\fontsize{9}{11}\GaramondProIt}[\ifvmode\else\/\fi]
+
+\grechangestaffsize{16}
+
+
+%\grechangedim{afterinitialshift}{2.2mm}{fixed}
+%\grechangedim{beforeinitialshift}{3mm}{fixed}
+
+
+%Mettre l'étoile sous le quart de barre
+\grechangedim{maxbaroffsettextleft}{0 cm}{scalable}
+\grechangedim{maxbaroffsettextright}{0 cm}{scalable}
+\grechangedim{maxbaroffsettextleft@nobar}{0 cm}{scalable}
+\grechangedim{maxbaroffsettextright@nobar}{0 cm}{scalable}
+
+% Pour ne pas justifier la ligne qui précède le euouae
+\gresetbreakbeforeeuouae{ragged}
+
+
+% Pour ne pas justifier la dernière ligne
+\gresetlastline{ragged}
+
+\gresetbarspacing{new}
+\grechangedim{bar@maior@standalone@notext}{0.3 cm}{scalable}%
+\grechangedim{spacebeforeeolcustos}{0.3 cm}{scalable}%

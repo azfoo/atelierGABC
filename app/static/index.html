@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Atelier GABC</title>
+<link rel="stylesheet" href="/codemirror.min.css">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: Georgia, serif;
+  background: #f8f6f0;
+  color: #2a2218;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  font-size: 16px;
+}
+
+/* ── Scrollbars ── */
+/* Dark areas: sidebar, log */
+#sidebar, #log-output {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.18) transparent;
+}
+#sidebar::-webkit-scrollbar,
+#log-output::-webkit-scrollbar { width: 5px; }
+#sidebar::-webkit-scrollbar-track,
+#log-output::-webkit-scrollbar-track { background: transparent; }
+#sidebar::-webkit-scrollbar-thumb,
+#log-output::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.18); border-radius: 3px;
+}
+#sidebar::-webkit-scrollbar-thumb:hover,
+#log-output::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.32); }
+
+/* Light areas: preview, CodeMirror */
+#preview, #cm-wrap .CodeMirror-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0,0,0,0.18) transparent;
+}
+#preview::-webkit-scrollbar,
+#cm-wrap .CodeMirror-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
+#preview::-webkit-scrollbar-track,
+#cm-wrap .CodeMirror-scroll::-webkit-scrollbar-track { background: transparent; }
+#preview::-webkit-scrollbar-thumb,
+#cm-wrap .CodeMirror-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.18); border-radius: 3px;
+}
+#preview::-webkit-scrollbar-thumb:hover,
+#cm-wrap .CodeMirror-scroll::-webkit-scrollbar-thumb:hover { background: rgba(139,69,19,0.5); }
+
+/* ── Setup screen ── */
+#setup {
+  max-width: 500px;
+  margin: 5em auto;
+  padding: 2em 2.2em;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.1);
+}
+#setup h1 { font-size: 1.6em; font-weight: 600; margin-bottom: 0.15em; letter-spacing: 0.04em; }
+#setup .tagline { color: #888; font-style: italic; margin-bottom: 1.8em; font-size: 0.9em; }
+.field { margin-bottom: 1.1em; }
+.field label { display: block; font-size: 0.82em; color: #666; margin-bottom: 0.3em; font-family: Georgia, serif; }
+.browse-row { display: flex; gap: 0.4em; }
+.browse-row input { flex: 1; }
+input[type=text] {
+  width: 100%; padding: 0.38em 0.6em;
+  border: 1px solid #ccc; border-radius: 3px;
+  font-family: Georgia, serif; font-size: 0.92em;
+  background: #fafafa; color: #2a2218;
+}
+input[type=text]:focus { outline: none; border-color: #8b4513; background: #fff; }
+.field-hint { font-size: 0.76em; color: #aaa; margin-top: 0.25em; }
+.btn {
+  padding: 0.35em 0.85em;
+  font-family: Georgia, serif; font-size: 0.85em;
+  border: 1px solid #ccc; background: #f5f2ed;
+  color: #444; cursor: pointer; border-radius: 3px;
+  white-space: nowrap;
+}
+.btn:hover { background: #eae6df; border-color: #bbb; }
+.btn-primary { background: #8b4513; color: #fff; border-color: #8b4513; }
+.btn-primary:hover { background: #a0521a; border-color: #a0521a; }
+.btn-sm { padding: 0.25em 0.6em; font-size: 0.8em; }
+.setup-actions { margin-top: 1.6em; display: flex; gap: 0.6em; align-items: center; }
+.setup-note { font-size: 0.76em; color: #aaa; }
+
+/* ── Main app shell ── */
+#app { display: none; flex-direction: column; height: 100vh; min-height: 0; }
+
+header {
+  background: #2a2218; color: #f8f6f0;
+  display: flex; align-items: center; gap: 0.7em;
+  padding: 0.5em 1em; flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+header h1 { font-size: 0.92em; font-weight: 400; letter-spacing: 0.1em; flex-shrink: 0; }
+.header-sep { color: rgba(255,255,255,0.2); }
+#file-label {
+  font-size: 0.78em; color: rgba(255,255,255,0.6);
+  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+header button {
+  padding: 0.28em 0.75em;
+  font-family: Georgia, serif; font-size: 0.78em;
+  border: 1px solid rgba(255,255,255,0.25);
+  background: transparent; color: #f8f6f0;
+  cursor: pointer; border-radius: 3px; flex-shrink: 0;
+  transition: background 0.12s;
+}
+header button:hover { background: rgba(255,255,255,0.1); }
+header button.primary { background: #8b4513; border-color: #8b4513; }
+header button.primary:hover { background: #a0521a; }
+header button:disabled { opacity: 0.32; cursor: not-allowed; }
+
+/* ── Body: sidebar + editor ── */
+#body { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+
+/* ── Sidebar / file tree ── */
+#sidebar {
+  width: 230px; flex-shrink: 0;
+  background: #221d16;
+  overflow-y: auto;
+  display: flex; flex-direction: column;
+}
+
+/* ── Resizer handles ── */
+.resizer-x {
+  width: 4px; flex-shrink: 0; cursor: col-resize;
+  background: #151210; transition: background 0.15s;
+}
+.resizer-x:hover, .resizer-x.dragging { background: #8b4513; }
+.resizer-y {
+  height: 4px; flex-shrink: 0; cursor: row-resize;
+  background: #e0dbd0; transition: background 0.15s;
+}
+.resizer-y:hover, .resizer-y.dragging { background: #8b4513; }
+#sidebar-header {
+  padding: 0; flex-shrink: 0;
+  display: flex; align-items: center;
+}
+#folder-link {
+  display: flex; align-items: center;
+  flex: 1; padding: 0.5em 0.4em 0.5em 0.8em;
+  background: none; border: none; cursor: pointer;
+  font-size: 0.68em; color: rgba(255,255,255,0.38);
+  text-align: left; font-family: Georgia, serif;
+  letter-spacing: 0.04em;
+  transition: color 0.12s;
+  overflow: hidden; min-width: 0;
+}
+#folder-link:hover { color: rgba(255,255,255,0.75); }
+#folder-label {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#btn-new-file {
+  flex-shrink: 0; padding: 0.3em 0.55em;
+  background: none; border: none; cursor: pointer;
+  font-size: 1em; color: rgba(255,255,255,0.32);
+  line-height: 1; transition: color 0.12s;
+  font-family: Georgia, serif;
+}
+#btn-new-file:hover { color: rgba(255,255,255,0.8); }
+#tree { flex: 1; overflow-y: auto; }
+#sidebar-footer {
+  padding: 0.45em 0.6em;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  flex-shrink: 0;
+}
+#btn-export-all {
+  width: 100%;
+  padding: 0.28em 0.6em;
+  font-family: Georgia, serif; font-size: 0.78em;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.13);
+  color: rgba(255,255,255,0.52);
+  cursor: pointer; border-radius: 3px; text-align: center;
+  transition: background 0.12s, color 0.12s;
+}
+#btn-export-all:hover { background: rgba(255,255,255,0.11); color: rgba(255,255,255,0.85); }
+#btn-export-all:disabled { opacity: 0.35; cursor: not-allowed; }
+.tree-folder {
+  display: flex; align-items: center; gap: 0.4em;
+  padding: 0.32em 0.8em 0.2em;
+  color: rgba(255,255,255,0.42);
+  font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.1em;
+  cursor: pointer; user-select: none;
+  font-family: Georgia, serif;
+}
+.tree-folder:hover { color: rgba(255,255,255,0.7); }
+.tree-arrow { font-style: normal; display: inline-block; width: 0.9em; transition: transform 0.15s; }
+.tree-arrow.open { transform: rotate(90deg); }
+.tree-children { overflow: hidden; padding-left: 0.9em; }
+.tree-item {
+  display: flex; align-items: center; gap: 0.4em;
+  padding: 0.3em 0.5em 0.3em 1.6em;
+  color: rgba(255,255,255,0.68);
+  font-size: 0.82em; cursor: pointer; min-width: 0;
+}
+.tree-item:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.9); }
+.tree-item.active { background: #8b4513; color: #fff; }
+.tree-item.dragging { opacity: 0.35; }
+.tree-folder.drop-target { background: rgba(139,69,19,0.35); color: rgba(255,255,255,0.95); border-radius: 3px; }
+.tree-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tree-pdf-btn {
+  flex-shrink: 0; font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 0.66em; letter-spacing: 0.04em;
+  color: rgba(255,255,255,0.3);
+  padding: 0.1em 0.38em; border-radius: 2px;
+  border: 1px solid rgba(255,255,255,0.13);
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.tree-item:hover .tree-pdf-btn { color: rgba(255,255,255,0.5); border-color: rgba(255,255,255,0.22); }
+.tree-pdf-btn:hover { color: #e8b88a !important; border-color: rgba(139,69,19,0.7) !important; background: rgba(139,69,19,0.22) !important; }
+.tree-item.active .tree-pdf-btn { color: rgba(255,255,255,0.6); border-color: rgba(255,255,255,0.35); }
+.tree-icon { font-style: normal; opacity: 0.5; flex-shrink: 0; }
+
+/* ── Editor area ── */
+#editor-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; min-height: 0; }
+
+/* ── Exsurge preview ── */
+#preview {
+  background: #fff;
+  border-bottom: 1px solid #e0dbd0;
+  padding: 0.8em 1.2em;
+  overflow-x: auto;
+  flex-shrink: 0;
+  min-height: 60px;
+  max-height: 38vh;
+  overflow-y: auto;
+}
+#preview svg { max-width: 100%; height: auto; display: block; overflow: visible; }
+.chant-stave { margin-bottom: 2px; }
+.chant-stave svg { max-width: 100%; height: auto; display: block; overflow: visible; }
+.preview-placeholder { color: #bbb; font-style: italic; font-size: 0.88em; line-height: 2.5; }
+.gabc-fallback { font-family: monospace; font-size: 0.75em; color: #888; white-space: pre-wrap; }
+
+/* ── CodeMirror wrapper ── */
+#cm-wrap { flex: 1; overflow: hidden; }
+#cm-wrap .CodeMirror {
+  height: 100%; font-size: 13px; line-height: 1.5;
+  font-family: 'Consolas', 'Menlo', monospace;
+  background: #fafaf7; color: #2a2218;
+  border: none;
+}
+#cm-wrap .CodeMirror-scroll { overflow: auto !important; }
+
+/* ── Log panel ── */
+#log-panel {
+  background: #1a1510; color: #ccc;
+  font-size: 0.8em; flex-shrink: 0;
+  border-top: 1px solid #111;
+}
+#log-toggle {
+  padding: 0.32em 0.8em; cursor: pointer;
+  display: flex; align-items: center; gap: 0.5em;
+  color: rgba(255,255,255,0.45); user-select: none;
+  font-family: Georgia, serif; font-size: 0.9em;
+}
+#log-toggle:hover { color: rgba(255,255,255,0.8); }
+#log-toggle .arrow { font-style: normal; transition: transform 0.15s; display: inline-block; }
+#log-toggle .arrow.open { transform: rotate(90deg); }
+#log-output {
+  display: none; padding: 0.4em 0.9em 0.7em;
+  font-family: monospace; white-space: pre-wrap;
+  max-height: 180px; overflow-y: auto;
+  font-size: 0.88em; line-height: 1.4;
+}
+#log-output.visible { display: block; }
+.log-ok { color: #7aad5f; }
+.log-err { color: #e57373; }
+.log-spin { color: #c9a227; }
+
+/* ── Update banner ── */
+#update-banner {
+  display: none; align-items: center; gap: 0.8em;
+  padding: 0.3em 1em; flex-shrink: 0;
+  background: #4a7a28; color: #fff;
+  font-size: 0.8em; font-family: Georgia, serif;
+}
+#update-banner.visible { display: flex; }
+#update-banner button {
+  padding: 0.2em 0.7em;
+  font-family: Georgia, serif; font-size: 0.85em;
+  border: 1px solid rgba(255,255,255,0.45);
+  background: rgba(255,255,255,0.15); color: #fff;
+  cursor: pointer; border-radius: 3px;
+}
+#update-banner button:hover { background: rgba(255,255,255,0.28); }
+#update-banner button:disabled { opacity: 0.5; cursor: not-allowed; }
+#update-banner .dismiss {
+  margin-left: auto; border: none !important; background: none !important;
+  opacity: 0.6; font-size: 1.1em; padding: 0 0.3em;
+}
+#update-banner .dismiss:hover { opacity: 1; }
+
+/* ── Modals (settings + help) ── */
+#settings-modal, #help-modal {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.55); z-index: 200;
+  align-items: center; justify-content: center;
+}
+#settings-modal.open, #help-modal.open { display: flex; }
+#help-modal .modal { width: 540px; max-height: 82vh; overflow-y: auto; }
+.help-body { font-size: 0.88em; line-height: 1.65; color: #2a2218; }
+.help-body h3 { font-size: 0.92em; font-weight: 600; margin: 1.2em 0 0.35em; letter-spacing: 0.02em; }
+.help-body h3:first-child { margin-top: 0; }
+.help-body ol, .help-body ul { padding-left: 1.5em; margin: 0.3em 0 0.6em; }
+.help-body li { margin-bottom: 0.25em; }
+.help-body pre { background: #f4f2ee; padding: 0.65em 0.9em; border-radius: 3px; font-family: 'Consolas', 'Menlo', monospace; font-size: 0.82em; line-height: 1.55; margin: 0.5em 0 0.8em; white-space: pre; overflow-x: auto; }
+.help-body .kv { display: grid; grid-template-columns: max-content 1fr; gap: 0.25em 1.2em; margin: 0.3em 0 0.6em; }
+.help-body .kv kbd { font-family: 'Consolas', 'Menlo', monospace; font-size: 0.85em; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 0.05em 0.45em; white-space: nowrap; }
+.help-body .kv span { color: #555; align-self: center; }
+.help-dedication { margin-top: 1.8em; padding-top: 1.2em; border-top: 1px solid #e8e4dc; text-align: center; font-style: italic; color: #888; font-size: 0.85em; line-height: 1.7; }
+
+/* ── Settings modal ── */
+.modal {
+  background: #fff; border-radius: 5px;
+  padding: 1.5em 1.8em; width: 480px; max-width: 95vw;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+.modal h2 { font-size: 1.1em; margin-bottom: 1.1em; }
+.modal-section { font-size: 0.7em; text-transform: uppercase; letter-spacing: 0.12em; color: #999; margin: 1em 0 0.5em; }
+.modal-row { display: flex; gap: 0.4em; margin-bottom: 0.7em; align-items: center; }
+.modal-row input { flex: 1; }
+.modal-row label { width: 120px; flex-shrink: 0; font-size: 0.82em; color: #666; }
+.modal-trio { display: flex; gap: 0.4em; }
+.modal-trio input { width: 80px; flex-shrink: 0; }
+.modal-trio label { font-size: 0.78em; color: #888; align-self: center; }
+.modal-actions { display: flex; gap: 0.5em; justify-content: flex-end; margin-top: 1.4em; }
+</style>
+</head>
+<body>
+
+<!-- ── Setup screen ── -->
+<div id="setup" style="display:none">
+  <h1>Atelier GABC</h1>
+  <p class="tagline">Chant grégorien — éditeur GABC &amp; compilateur PDF</p>
+
+  <div class="field">
+    <label>Dossier GABC — où se trouvent vos fichiers .gabc</label>
+    <div class="browse-row">
+      <input type="text" id="in-gabc-root" placeholder="/chemin/vers/gregorio">
+      <button class="btn" onclick="browse('in-gabc-root')">Parcourir…</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Fichier de configuration — ex. configuration.tex</label>
+    <div class="browse-row">
+      <input type="text" id="in-config-file" placeholder="Configuration par défaut (intégrée)">
+      <button class="btn" onclick="browseFile('in-config-file')">Parcourir…</button>
+    </div>
+    <p class="field-hint">Laisser vide pour utiliser la configuration intégrée.</p>
+  </div>
+
+  <div class="field">
+    <label>Chemin LuaLaTeX (laisser vide pour la détection automatique)</label>
+    <div class="browse-row">
+      <input type="text" id="in-lualatex" placeholder="lualatex">
+      <button class="btn btn-sm" onclick="detectLualatex()">Détecter</button>
+    </div>
+    <p class="field-hint" id="lualatex-status"></p>
+  </div>
+
+  <div class="setup-actions">
+    <button class="btn btn-primary" onclick="saveSetup()">Enregistrer et ouvrir</button>
+    <span class="setup-note">Les paramètres sont enregistrés localement et peuvent être modifiés ultérieurement.</span>
+  </div>
+</div>
+
+<!-- ── Main app ── -->
+<div id="app">
+<div id="update-banner">
+  <span>Mise à jour disponible — v<span id="update-ver"></span></span>
+  <button id="btn-do-update" onclick="applyUpdate()">Installer et relancer</button>
+  <button class="dismiss" onclick="dismissUpdate()" title="Ignorer">×</button>
+</div>
+  <header>
+    <h1>Atelier GABC</h1>
+    <span class="header-sep">|</span>
+    <span id="file-label">Aucun fichier sélectionné</span>
+    <button onclick="saveFile()" id="btn-save" title="Cmd+S">Enregistrer</button>
+    <button onclick="compileFile()" id="btn-compile" class="primary">Exporter en PDF</button>
+    <button onclick="openPdf()" id="btn-open-pdf" disabled>Ouvrir le PDF</button>
+    <button onclick="openSettings()">Paramètres</button>
+    <button onclick="openHelp()" title="Aide">?</button>
+  </header>
+
+  <div id="body">
+    <div id="sidebar">
+      <div id="sidebar-header">
+        <button id="folder-link" onclick="openCurrentFolder()" title="Changer le dossier GABC">
+          <span id="folder-label">Fichiers de chant</span>
+        </button>
+        <button id="btn-new-file" onclick="newFile()" title="Nouveau fichier GABC">+</button>
+      </div>
+      <div id="tree"></div>
+      <div id="sidebar-footer">
+        <button id="btn-export-all" onclick="exportAll()">Exporter tout en PDF</button>
+      </div>
+    </div>
+
+    <div class="resizer-x" id="sidebar-resizer"></div>
+
+    <div id="editor-area">
+      <div id="preview">
+        <span class="preview-placeholder">Sélectionner un fichier .gabc pour prévisualiser</span>
+      </div>
+      <div class="resizer-y" id="preview-resizer"></div>
+      <div id="cm-wrap">
+        <textarea id="editor"></textarea>
+      </div>
+      <div id="log-panel">
+        <div id="log-toggle">
+          <span class="arrow" id="log-arrow">▶</span>
+          Journal de compilation
+        </div>
+        <div id="log-output"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Settings modal ── -->
+<div id="settings-modal">
+  <div class="modal">
+    <h2>Paramètres</h2>
+    <div class="modal-section">Dossiers</div>
+    <div class="modal-row">
+      <label>Dossier GABC</label>
+      <input type="text" id="set-gabc-root">
+      <button class="btn btn-sm" onclick="browseModal('set-gabc-root')">…</button>
+    </div>
+    <div class="modal-row">
+      <label>Fichier de configuration</label>
+      <input type="text" id="set-config-file" placeholder="Configuration par défaut (intégrée)">
+      <button class="btn btn-sm" onclick="browseFileModal('set-config-file')">…</button>
+    </div>
+    <div class="field-hint" id="config-file-hint" style="margin:-0.4em 0 0.7em 122px;font-size:0.74em;color:#aaa"></div>
+    <div class="modal-row">
+      <label>Chemin LuaLaTeX</label>
+      <input type="text" id="set-lualatex" placeholder="lualatex (détection auto)">
+      <button class="btn btn-sm" onclick="detectLualatexModal()">Auto</button>
+    </div>
+    <div class="modal-row">
+      <label>Dossier de sortie</label>
+      <input type="text" id="set-output-folder" placeholder="Même dossier que le fichier .gabc">
+      <button class="btn btn-sm" onclick="browseModal('set-output-folder')">…</button>
+    </div>
+
+    <div class="modal-actions" style="justify-content:space-between">
+      <button class="btn" onclick="openTemplate()">Modifier le modèle LaTeX…</button>
+      <div style="display:flex;gap:0.5em">
+        <button class="btn" onclick="closeSettings()">Annuler</button>
+        <button class="btn btn-primary" onclick="saveSettingsModal()">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Help modal ── -->
+<div id="help-modal">
+  <div class="modal">
+    <h2>Aide</h2>
+    <div class="help-body">
+
+      <h3>Vue d'ensemble</h3>
+      <p>Atelier GABC est un éditeur de fichiers GABC avec prévisualisation en temps réel et export en PDF via LuaLaTeX et gregoriotex.</p>
+
+      <h3>Utilisation</h3>
+      <ol>
+        <li>Cliquez sur le nom du dossier en haut à gauche pour choisir votre dossier de fichiers .gabc</li>
+        <li>Sélectionnez un fichier dans la liste</li>
+        <li>Modifiez le contenu dans l'éditeur — la prévisualisation se met à jour automatiquement</li>
+        <li><strong>Enregistrer</strong> (Cmd+S) pour sauvegarder</li>
+        <li><strong>Exporter en PDF</strong> pour compiler, puis <strong>Ouvrir le PDF</strong> pour l'afficher</li>
+      </ol>
+
+      <h3>Format GABC</h3>
+      <p>Un fichier GABC contient un en-tête (nom, mode…) séparé du corps par <code>%%</code>, suivi de syllabes associées à leur notation neumatique entre parenthèses.</p>
+      <pre>name: Kyrie;
+mode: 1;
+%%
+Ky(f)ri(gf)e(e) e(h)lei(ixjih)son(h.)</pre>
+
+      <h3>À propos de la prévisualisation</h3>
+      <p>La prévisualisation est générée par <em>exsurge</em> et ne tient pas compte du fichier de configuration (polices, ornements, macros). Elle est uniquement destinée à vérifier les notes et le texte, et ne reflète pas le rendu final du PDF.</p>
+
+      <h3>Raccourcis clavier</h3>
+      <div class="kv">
+        <kbd>Cmd+S</kbd><span>Enregistrer le fichier</span>
+        <kbd>Échap</kbd><span>Fermer cette fenêtre</span>
+      </div>
+
+      <h3>Dépendances requises</h3>
+      <ul>
+        <li><strong>MacTeX</strong> ou <strong>TeX Live</strong> — fournit lualatex et gregoriotex</li>
+        <li><strong>gregorio</strong> — compilateur GABC (inclus dans TeX Live 2021+)</li>
+      </ul>
+
+      <h3>Paramètres</h3>
+      <ul>
+        <li><strong>Dossier GABC</strong> — racine de votre bibliothèque de fichiers .gabc</li>
+        <li><strong>Fichier de configuration</strong> — fichier .tex chargé avant le document (polices, marges, macros). Laisser vide pour utiliser la configuration intégrée (configuration.tex).</li>
+        <li><strong>Dossier de sortie</strong> — où les PDF sont enregistrés (par défaut : même dossier que le .gabc)</li>
+        <li><strong>Largeur de partition</strong> — largeur en cm du score dans le PDF</li>
+      </ul>
+
+      <p class="help-dedication">Réalisé pour la Famille Monastique de Bethléem,<br>de l'Assomption de la Vierge<br>et de saint Bruno<br><br><span id="help-version" style="font-style:normal;font-size:0.85em;opacity:0.5"></span></p>
+
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="closeHelp()">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Template editor modal ── -->
+<div id="template-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:200;align-items:center;justify-content:center">
+  <div class="modal" style="width:min(820px,92vw);max-height:88vh;display:flex;flex-direction:column">
+    <h2 style="flex-shrink:0">Modèle LaTeX <span id="tmpl-custom-badge" style="font-size:0.65em;font-weight:normal;color:#8b4513;margin-left:0.5em;display:none">(personnalisé)</span></h2>
+    <p style="font-size:0.8em;color:#888;margin:-0.6em 0 0.9em;flex-shrink:0">Variables disponibles : <code>&lt;&lt; config_file &gt;&gt;</code>, <code>&lt;&lt; gabc_name &gt;&gt;</code></p>
+    <div id="tmpl-cm-wrap" style="flex:1;overflow:hidden;border:1px solid #ddd;border-radius:3px;min-height:320px"></div>
+    <div class="modal-actions" style="flex-shrink:0;justify-content:space-between;margin-top:1em">
+      <button class="btn" id="tmpl-reset-btn" onclick="resetTemplate()">Restaurer le modèle par défaut</button>
+      <div style="display:flex;gap:0.5em">
+        <button class="btn" onclick="closeTemplate()">Annuler</button>
+        <button class="btn btn-primary" onclick="saveTemplate()">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/codemirror.min.js"></script>
+<script>
+'use strict';
+
+// ── Exsurge GABC rendering (worker — see preview-worker.js) ──────────────
+
+function showFallback(container) {
+  container.innerHTML = '<span class="preview-placeholder">Erreur de rendu</span>';
+}
+
+// ── Web Worker preview renderer ───────────────────────────────────────────
+
+const _worker = new Worker('/preview-worker.js');
+let _previewGen = 0;
+
+_worker.onmessage = ({ data: { gen, svg, error } }) => {
+  if (error) console.error('[preview worker]', error);
+  if (gen !== _previewGen) return;
+  const preview = document.getElementById('preview');
+  if (svg) preview.innerHTML = svg;
+  else showFallback(preview);
+};
+_worker.onerror = (e) => {
+  console.error('[preview worker load error]', e.message, e);
+  document.getElementById('preview').innerHTML =
+    '<span class="preview-placeholder">Aperçu indisponible — erreur worker</span>';
+};
+
+// ── State ────────────────────────────────────────────────────────────────
+
+let cm = null;
+let currentFile = null;   // {path, name, dir}
+let currentPdfRel = null;
+let isDirty = false;
+let _updating = false;
+let loading = false;      // true while setValue is running; suppresses dirty flag
+let previewTimer = null;
+let gabcRoot = '';
+
+// ── API helper ───────────────────────────────────────────────────────────
+
+async function api(url, method = 'GET', data = null) {
+  const opts = { method };
+  if (data) { opts.headers = { 'Content-Type': 'application/json' }; opts.body = JSON.stringify(data); }
+  try {
+    const res = await fetch(url, opts);
+    return await res.json();
+  } catch(e) {
+    return { error: String(e) };
+  }
+}
+
+// ── Setup ────────────────────────────────────────────────────────────────
+
+async function init() {
+  const settings = await api('/api/settings');
+  if (settings.gabc_root) {
+    showApp(settings);
+  } else {
+    document.getElementById('setup').style.display = '';
+  }
+}
+
+async function browse(inputId) {
+  const res = await api('/api/browse-folder');
+  if (res.path) {
+    document.getElementById(inputId).value = res.path;
+  } else {
+    alert('Impossible d\'ouvrir le sélecteur de dossier. Veuillez saisir le chemin manuellement.');
+  }
+}
+
+async function browseFile(inputId) {
+  const res = await api('/api/browse-file');
+  if (res.path) document.getElementById(inputId).value = res.path;
+}
+
+async function detectLualatex() {
+  const res = await api('/api/detect-lualatex');
+  const st = document.getElementById('lualatex-status');
+  const inp = document.getElementById('in-lualatex');
+  if (res.found) {
+    inp.value = res.path;
+    st.textContent = '✓ Trouvé : ' + res.path;
+    st.style.color = '#5a8030';
+  } else {
+    st.textContent = 'Introuvable dans le PATH. Installez MacTeX ou TeX Live, ou saisissez le chemin manuellement.';
+    st.style.color = '#c44';
+  }
+}
+
+async function saveSetup() {
+  const gabcRoot = document.getElementById('in-gabc-root').value.trim();
+  if (!gabcRoot) { alert('Veuillez saisir le chemin du dossier GABC.'); return; }
+  const settings = {
+    gabc_root: gabcRoot,
+    config_file: document.getElementById('in-config-file').value.trim(),
+    lualatex_path: document.getElementById('in-lualatex').value.trim(),
+  };
+  await api('/api/settings', 'POST', settings);
+  document.getElementById('setup').style.display = 'none';
+  showApp(settings);
+}
+
+// ── Main app ─────────────────────────────────────────────────────────────
+
+function showApp(settings) {
+  gabcRoot = settings.gabc_root || '';
+  document.getElementById('app').style.display = 'flex';
+  if (!cm) initEditor();
+  loadTree();
+  updateFolderLink(null);
+}
+
+function initEditor() {
+  cm = CodeMirror.fromTextArea(document.getElementById('editor'), {
+    lineNumbers: true,
+    lineWrapping: true,
+    indentWithTabs: false,
+    tabSize: 2,
+  });
+  cm.on('change', (instance, change) => {
+    if (loading) return;
+    if (change.origin === '+input' && change.text.length === 1 && change.text[0] === '(') {
+      const hadSelection = change.from.line !== change.to.line || change.from.ch !== change.to.ch;
+      if (hadSelection) {
+        const selected = change.removed.join('\n');
+        const cur = cm.getCursor();
+        cm.replaceRange('(' + selected + ')', change.from, cur);
+      } else {
+        const cur = cm.getCursor();
+        cm.replaceRange(')', cur);
+        cm.setCursor(cur);
+      }
+    }
+    if (!isDirty) { isDirty = true; updateTitle(); }
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(refreshPreview, 700);
+  });
+  cm.on('beforeChange', (instance, change) => {
+    if (change.origin !== '+input') return;
+    if (change.text.length !== 1 || change.text[0] !== ')') return;
+    if (change.from.line !== change.to.line || change.from.ch !== change.to.ch) return;
+    const line = cm.getLine(change.from.line);
+    if (line[change.from.ch] === ')') {
+      change.cancel();
+      setTimeout(() => cm.setCursor({line: change.from.line, ch: change.from.ch + 1}), 0);
+    }
+  });
+}
+
+async function loadTree() {
+  const tree = await api('/api/tree');
+  const container = document.getElementById('tree');
+  container.innerHTML = '';
+  if (!tree.length) {
+    container.innerHTML = '<div style="color:rgba(255,255,255,0.3);font-size:0.8em;padding:1em 0.8em">Aucun fichier .gabc trouvé</div>';
+    return;
+  }
+  renderNodes(tree, container);
+  if (currentFile) highlightTreeItem(currentFile.path);
+}
+
+function renderNodes(items, container) {
+  for (const item of items) {
+    if (item.type === 'folder') {
+      const folderEl = document.createElement('div');
+      folderEl.className = 'tree-folder';
+      const arrow = document.createElement('span');
+      arrow.className = 'tree-arrow open';
+      arrow.textContent = '▶';
+      folderEl.appendChild(arrow);
+      folderEl.appendChild(document.createTextNode(item.name));
+      container.appendChild(folderEl);
+
+      const childWrap = document.createElement('div');
+      childWrap.className = 'tree-children';
+      renderNodes(item.children, childWrap);
+      container.appendChild(childWrap);
+
+      folderEl.addEventListener('click', () => {
+        const isOpen = childWrap.style.display !== 'none';
+        childWrap.style.display = isOpen ? 'none' : '';
+        arrow.classList.toggle('open', !isOpen);
+      });
+
+      folderEl.addEventListener('dragover', e => {
+        e.preventDefault(); e.stopPropagation();
+        e.dataTransfer.dropEffect = 'move';
+        folderEl.classList.add('drop-target');
+      });
+      folderEl.addEventListener('dragleave', e => {
+        if (!folderEl.contains(e.relatedTarget)) folderEl.classList.remove('drop-target');
+      });
+      folderEl.addEventListener('drop', e => {
+        e.preventDefault(); e.stopPropagation();
+        folderEl.classList.remove('drop-target');
+        const src = e.dataTransfer.getData('text/plain');
+        if (src) moveFile(src, item.path);
+      });
+    } else {
+      const el = document.createElement('div');
+      el.className = 'tree-item';
+      el.dataset.path = item.path;
+
+      const icon = document.createElement('span');
+      icon.className = 'tree-icon';
+      icon.textContent = '♩';
+      el.appendChild(icon);
+
+      const name = document.createElement('span');
+      name.className = 'tree-name';
+      name.textContent = item.name.replace(/\.gabc$/, '');
+      el.appendChild(name);
+
+      if (item.pdf) {
+        const badge = document.createElement('span');
+        badge.className = 'tree-pdf-btn';
+        badge.textContent = 'pdf';
+        badge.title = 'Ouvrir le PDF';
+        badge.addEventListener('click', e => {
+          e.stopPropagation();
+          api('/api/open-pdf', 'POST', { path: item.pdf });
+        });
+        el.appendChild(badge);
+      }
+
+      el.draggable = true;
+      el.addEventListener('dragstart', e => {
+        e.dataTransfer.setData('text/plain', item.path);
+        e.dataTransfer.effectAllowed = 'move';
+        setTimeout(() => el.classList.add('dragging'), 0);
+      });
+      el.addEventListener('dragend', () => {
+        el.classList.remove('dragging');
+        document.querySelectorAll('.drop-target').forEach(t => t.classList.remove('drop-target'));
+      });
+
+      el.addEventListener('click', () => openFile(item.path, item.name));
+      container.appendChild(el);
+    }
+  }
+}
+
+async function moveFile(srcPath, dstFolder) {
+  const srcFolder = srcPath.includes('/') ? srcPath.slice(0, srcPath.lastIndexOf('/')) : '';
+  if (srcFolder === dstFolder) return;
+  const res = await api('/api/move', 'POST', { src: srcPath, dst_folder: dstFolder });
+  if (res.error) { alert('Impossible de déplacer le fichier : ' + res.error); return; }
+  if (currentFile && currentFile.path === srcPath) {
+    currentFile = { path: res.new_path, name: currentFile.name };
+    updateTitle();
+  }
+  await loadTree();
+}
+
+async function openFile(path, name) {
+  if (isDirty && !confirm('Des modifications non enregistrées existent. Ouvrir un autre fichier quand même ?')) return;
+  const res = await api(`/api/file?path=${encodeURIComponent(path)}`);
+  if (res.error) { alert('Impossible d\'ouvrir le fichier : ' + res.error); return; }
+
+  currentFile = { path, name };
+
+  // Load content without triggering the dirty flag
+  loading = true;
+  cm.setValue(res.content);
+  cm.clearHistory();
+  loading = false;
+  isDirty = false;
+
+  // Enable "Open PDF" if the server found a current PDF
+  currentPdfRel = res.pdf ? res.pdf.rel : null;
+  document.getElementById('btn-open-pdf').disabled = !currentPdfRel;
+
+  updateTitle();
+  highlightTreeItem(path);
+  refreshPreview();
+
+  document.getElementById('log-output').innerHTML = '';
+  document.getElementById('log-output').classList.remove('visible');
+  document.getElementById('log-arrow').classList.remove('open');
+}
+
+function updateTitle() {
+  const label = document.getElementById('file-label');
+  label.textContent = currentFile
+    ? (isDirty ? '● ' : '') + currentFile.path
+    : 'Aucun fichier sélectionné';
+}
+
+function highlightTreeItem(path) {
+  document.querySelectorAll('.tree-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.path === path);
+  });
+}
+
+function updateFolderLink() {
+  const label = document.getElementById('folder-label');
+  const btn = document.getElementById('folder-link');
+  const name = gabcRoot ? gabcRoot.split(/[\\/]/).filter(Boolean).pop() || gabcRoot : 'Fichiers de chant';
+  label.textContent = name;
+  btn.title = gabcRoot || 'Sélectionner un dossier GABC';
+}
+
+async function newFile() {
+  if (!gabcRoot) { alert('Sélectionnez d\'abord un dossier GABC.'); return; }
+  const name = prompt('Nom du fichier (sans extension) :');
+  if (!name || !name.trim()) return;
+  const base = name.trim().replace(/\.gabc$/i, '');
+  const relPath = base + '.gabc';
+  const initial = `name: ${base};\n%%\n`;
+  const res = await api('/api/save', 'POST', { path: relPath, content: initial });
+  if (res.error) { alert('Impossible de créer le fichier : ' + res.error); return; }
+  await loadTree();
+  openFile(relPath, relPath);
+}
+
+async function openCurrentFolder() {
+  const res = await api('/api/browse-folder');
+  if (!res.path) return;
+  gabcRoot = res.path;
+  const settings = await api('/api/settings');
+  const updated = Object.assign({}, settings, { gabc_root: gabcRoot });
+  await api('/api/settings', 'POST', updated);
+  updateFolderLink();
+  loadTree();
+}
+
+function gabcForPreview(gabc, sepIdx) {
+  const header = sepIdx !== -1 ? gabc.slice(0, sepIdx + 2) : '';
+  const body   = sepIdx !== -1 ? gabc.slice(sepIdx + 2) : gabc;
+  const lastParen = body.lastIndexOf(')');
+  if (lastParen === -1) return header + body.replace(/\(/g, '');
+  // Strip unmatched ( in the neume section — any ( with no ) before the next (
+  const safeHead = body.slice(0, lastParen + 1).replace(/\([^)]*(?=\(|$)/g, '');
+  // In the tail every ( is unmatched by definition; also cap length
+  const tail = body.slice(lastParen + 1);
+  const safeTail = (tail.length > 100 ? tail.slice(0, 100) + '…' : tail).replace(/\(/g, '');
+  return header + safeHead + safeTail;
+}
+
+function refreshPreview() {
+  const preview = document.getElementById('preview');
+  if (!currentFile) {
+    preview.innerHTML = '<span class="preview-placeholder">Sélectionner un fichier .gabc pour prévisualiser</span>';
+    return;
+  }
+  const gabc = cm.getValue();
+  const sepIdx = gabc.indexOf('%%');
+  const body = sepIdx !== -1 ? gabc.slice(sepIdx + 2) : gabc;
+  if (!body.includes('(') || !body.includes(')')) {
+    preview.innerHTML = '<span class="preview-placeholder">Aucune notation neumatique détectée</span>';
+    return;
+  }
+  const gen = ++_previewGen;
+  const width = Math.max((preview.clientWidth || 600) - 24, 80);
+  preview.innerHTML = '<span class="preview-placeholder">Rendu en cours…</span>';
+  _worker.postMessage({ gabc: gabcForPreview(gabc, sepIdx), width, gen });
+}
+
+async function saveFile() {
+  if (!currentFile) return;
+  const res = await api('/api/save', 'POST', { path: currentFile.path, content: cm.getValue() });
+  if (res.error) { alert('Échec de l\'enregistrement : ' + res.error); return; }
+  isDirty = false;
+  currentPdfRel = null;
+  document.getElementById('btn-open-pdf').disabled = true;
+  updateTitle();
+}
+
+async function compileFile() {
+  if (!currentFile) { alert('Aucun fichier sélectionné.'); return; }
+  await saveFile();
+
+  const btnCompile = document.getElementById('btn-compile');
+  const logOutput = document.getElementById('log-output');
+  const logArrow = document.getElementById('log-arrow');
+
+  btnCompile.disabled = true;
+  btnCompile.textContent = 'Compilation…';
+  logOutput.className = 'visible';
+  logArrow.classList.add('open');
+  logOutput.innerHTML = '<span class="log-spin">Lancement de lualatex…</span>\n';
+
+  try {
+    const res = await api('/api/compile', 'POST', { path: currentFile.path });
+
+    if (res.success) {
+      logOutput.innerHTML += `<span class="log-ok">✓ PDF généré : ${res.pdf_rel}</span>\n\n`;
+      currentPdfRel = res.pdf_rel;
+      document.getElementById('btn-open-pdf').disabled = false;
+      loadTree();
+    } else {
+      logOutput.innerHTML += `<span class="log-err">✗ Échec (code ${res.returncode})</span>\n\n`;
+    }
+
+    if (res.log) {
+      // Show last 60 lines — most relevant errors appear at the end
+      const lines = res.log.split('\n').filter(l => l.trim());
+      logOutput.innerHTML += esc(lines.slice(-60).join('\n'));
+    }
+  } finally {
+    btnCompile.disabled = false;
+    btnCompile.textContent = 'Exporter en PDF';
+  }
+}
+
+function openPdf() {
+  if (!currentPdfRel) return;
+  api('/api/open-pdf', 'POST', { path: currentPdfRel });
+}
+
+// ── Settings modal ───────────────────────────────────────────────────────
+
+async function openSettings() {
+  const s = await api('/api/settings');
+  document.getElementById('set-gabc-root').value = s.gabc_root || '';
+  document.getElementById('set-config-file').value = s.config_file || '';
+  document.getElementById('config-file-hint').textContent =
+    s.config_file ? '' : ('Par défaut : ' + (s._default_config_file || ''));
+  document.getElementById('set-lualatex').value = s.lualatex_path || '';
+  document.getElementById('set-output-folder').value = s.output_folder || '';
+  document.getElementById('settings-modal').classList.add('open');
+}
+
+function closeSettings() {
+  document.getElementById('settings-modal').classList.remove('open');
+}
+
+async function saveSettingsModal() {
+  const s = {
+    gabc_root:     document.getElementById('set-gabc-root').value.trim(),
+    config_file:   document.getElementById('set-config-file').value.trim(),
+    lualatex_path: document.getElementById('set-lualatex').value.trim(),
+    output_folder: document.getElementById('set-output-folder').value.trim(),
+  };
+  await api('/api/settings', 'POST', s);
+  closeSettings();
+  loadTree();
+}
+
+async function browseModal(inputId) {
+  const res = await api('/api/browse-folder');
+  if (res.path) document.getElementById(inputId).value = res.path;
+}
+
+async function browseFileModal(inputId) {
+  const res = await api('/api/browse-file');
+  if (res.path) document.getElementById(inputId).value = res.path;
+}
+
+async function detectLualatexModal() {
+  const res = await api('/api/detect-lualatex');
+  if (res.found) document.getElementById('set-lualatex').value = res.path;
+  else alert('lualatex introuvable. Installez MacTeX ou TeX Live.');
+}
+
+// ── Help modal ───────────────────────────────────────────────────────────
+
+async function openHelp() {
+  document.getElementById('help-modal').classList.add('open');
+  const res = await api('/api/version');
+  if (res.version) document.getElementById('help-version').textContent = 'v' + res.version;
+}
+function closeHelp() { document.getElementById('help-modal').classList.remove('open'); }
+
+// ── Template editor ───────────────────────────────────────────────────────
+
+let _tmplCm = null;
+
+async function openTemplate() {
+  closeSettings();
+  const res = await api('/api/template');
+  const modal = document.getElementById('template-modal');
+  modal.style.display = 'flex';
+  document.getElementById('tmpl-custom-badge').style.display = res.is_custom ? '' : 'none';
+  document.getElementById('tmpl-reset-btn').disabled = !res.is_custom;
+  if (!_tmplCm) {
+    const wrap = document.getElementById('tmpl-cm-wrap');
+    _tmplCm = CodeMirror(wrap, {
+      lineNumbers: true, lineWrapping: true,
+      indentWithTabs: false, tabSize: 2,
+      value: res.content,
+    });
+    setTimeout(() => _tmplCm.refresh(), 50);
+  } else {
+    _tmplCm.setValue(res.content);
+  }
+}
+
+function closeTemplate() {
+  document.getElementById('template-modal').style.display = 'none';
+}
+
+async function saveTemplate() {
+  await api('/api/template', 'POST', { content: _tmplCm.getValue() });
+  document.getElementById('tmpl-custom-badge').style.display = '';
+  document.getElementById('tmpl-reset-btn').disabled = false;
+  closeTemplate();
+}
+
+async function resetTemplate() {
+  if (!confirm('Restaurer le modèle par défaut ? Votre modèle personnalisé sera supprimé.')) return;
+  await api('/api/template/reset', 'POST', {});
+  const res = await api('/api/template');
+  _tmplCm.setValue(res.content);
+  document.getElementById('tmpl-custom-badge').style.display = 'none';
+  document.getElementById('tmpl-reset-btn').disabled = true;
+}
+
+// ── Heartbeat ─────────────────────────────────────────────────────────────
+
+setInterval(() => fetch('/api/heartbeat', { method: 'POST' }).catch(() => {}), 30000);
+
+// Prompt before navigating away (also fires on tab close — unavoidable).
+window.addEventListener('beforeunload', e => { if (_updating) return; e.preventDefault(); return e.returnValue = ''; });
+
+// ── Keyboard shortcuts ───────────────────────────────────────────────────
+
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault();
+    saveFile();
+  }
+  if (e.key === 'Escape') { closeSettings(); closeHelp(); closeTemplate(); }
+});
+
+// ── Log toggle ───────────────────────────────────────────────────────────
+
+// Drop onto the tree background moves to root
+document.getElementById('tree').addEventListener('dragover', e => {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+});
+document.getElementById('tree').addEventListener('drop', e => {
+  e.preventDefault();
+  const src = e.dataTransfer.getData('text/plain');
+  if (src) moveFile(src, '');
+});
+
+document.getElementById('log-toggle').addEventListener('click', () => {
+  const out = document.getElementById('log-output');
+  const arrow = document.getElementById('log-arrow');
+  const isOpen = out.classList.toggle('visible');
+  arrow.classList.toggle('open', isOpen);
+});
+
+// ── Utility ──────────────────────────────────────────────────────────────
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Panel resizers ────────────────────────────────────────────────────────
+
+(function() {
+  function makeDrag(handle, onMove, onDone) {
+    handle.addEventListener('mousedown', e => {
+      e.preventDefault();
+      handle.classList.add('dragging');
+      document.body.style.userSelect = 'none';
+      const move = e => onMove(e);
+      const up = () => {
+        handle.classList.remove('dragging');
+        document.body.style.userSelect = '';
+        document.removeEventListener('mousemove', move);
+        document.removeEventListener('mouseup', up);
+        if (onDone) onDone();
+      };
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', up);
+    });
+  }
+
+  const sidebar = document.getElementById('sidebar');
+  makeDrag(document.getElementById('sidebar-resizer'), e => {
+    const w = Math.max(120, Math.min(520, e.clientX));
+    sidebar.style.width = w + 'px';
+  }, refreshPreview);
+
+  const preview = document.getElementById('preview');
+  makeDrag(document.getElementById('preview-resizer'), e => {
+    const top = preview.getBoundingClientRect().top;
+    const h = Math.max(40, Math.min(window.innerHeight * 0.75, e.clientY - top));
+    preview.style.maxHeight = h + 'px';
+    preview.style.minHeight = h + 'px';
+  }, refreshPreview);
+
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(refreshPreview, 150);
+  });
+})();
+
+// ── Export all ───────────────────────────────────────────────────────────
+
+function exportAll() {
+  const btn = document.getElementById('btn-export-all');
+  const logOutput = document.getElementById('log-output');
+  const logArrow = document.getElementById('log-arrow');
+
+  btn.disabled = true;
+  logOutput.classList.add('visible');
+  logArrow.classList.add('open');
+  logOutput.innerHTML = '<span class="log-spin">Démarrage de l\'export…</span>\n';
+
+  const es = new EventSource('/api/compile-all');
+
+  es.onmessage = ({ data }) => {
+    const msg = JSON.parse(data);
+
+    if (msg.error) {
+      logOutput.innerHTML += `<span class="log-err">Erreur : ${esc(msg.error)}</span>\n`;
+      es.close(); btn.disabled = false; return;
+    }
+
+    if (msg.total !== undefined && !msg.done && !msg.index) {
+      logOutput.innerHTML = `<span class="log-spin">Export de ${msg.total} fichier(s)…</span>\n`;
+    }
+
+    if (msg.index !== undefined) {
+      const cls = msg.success ? 'log-ok' : 'log-err';
+      const sym = msg.success ? '✓' : '✗';
+      logOutput.innerHTML += `<span class="${cls}">${sym} ${esc(msg.path)}</span> <span style="opacity:.45">(${msg.index}/${msg.total})</span>\n`;
+      logOutput.scrollTop = logOutput.scrollHeight;
+    }
+
+    if (msg.done) {
+      const allOk = msg.succeeded === msg.total;
+      logOutput.innerHTML += `\n<span class="${allOk ? 'log-ok' : 'log-err'}">Terminé : ${msg.succeeded}/${msg.total} réussis</span>\n`;
+      logOutput.scrollTop = logOutput.scrollHeight;
+      loadTree();
+      es.close(); btn.disabled = false;
+    }
+  };
+
+  es.onerror = () => {
+    logOutput.innerHTML += '<span class="log-err">Erreur de connexion</span>\n';
+    es.close(); btn.disabled = false;
+  };
+}
+
+// ── Auto-update ──────────────────────────────────────────────────────────
+
+async function checkForUpdate() {
+  try {
+    const res = await api('/api/check-update');
+    if (res.available && res.latest_version) {
+      document.getElementById('update-ver').textContent = res.latest_version;
+      document.getElementById('update-banner').classList.add('visible');
+    }
+  } catch(e) {}
+}
+
+async function applyUpdate() {
+  if (isDirty && currentFile) {
+    if (!confirm('Des modifications non enregistrées seront perdues. Enregistrer avant de mettre à jour ?')) return;
+    await saveFile();
+  }
+  _updating = true;
+  const btn = document.getElementById('btn-do-update');
+  btn.disabled = true;
+  btn.textContent = 'Téléchargement…';
+  try {
+    const res = await api('/api/apply-update', 'POST');
+    if (res.error) {
+      _updating = false;
+      btn.textContent = 'Erreur';
+      setTimeout(() => { btn.disabled = false; btn.textContent = 'Installer et relancer'; }, 3000);
+    }
+    // On success the app restarts — no further action needed
+  } catch(e) {
+    // Connection closed by the restarting process — expected
+  }
+}
+
+function dismissUpdate() {
+  document.getElementById('update-banner').classList.remove('visible');
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────────
+init();
+checkForUpdate();
+</script>
+</body>
+</html>

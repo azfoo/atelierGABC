@@ -1,0 +1,25 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Dev settings (contain local machine paths)
+app/settings.json
+
+# LaTeX / Gregorio build artefacts
+*.aux
+*.log
+*.gaux
+*.gtmp
+*.gsniplog
+tmp-gre/
+
+# Output PDFs (generated, not source)
+*.pdf
+
+# PyInstaller / Velopack build output
+dist/
+build/
+releases/

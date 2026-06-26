@@ -1,0 +1,17 @@
+
+\directlua{%
+      local path = kpse.find_file("frpunct.lua", "lua")
+      if path then
+         local f = dofile(path)
+         luatexbase.add_to_callback("kerning",
+                    f, "frpunct.french_punctuation")
+      else
+         texio.write_nl('')
+         texio.write_nl('*****************************')
+         texio.write_nl('Error: frpunct.lua not found.')
+         texio.write_nl('*****************************')
+         texio.write_nl('')
+      end
+}
+
+\endinput
