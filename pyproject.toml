@@ -13,4 +13,4 @@ dependencies = [
 build = ["pyinstaller"]
 
 [project.urls]
-Repository = "https://github.com/azfoo/atelier-gabc"
+Repository = "https://github.com/azfoo/atelierGABC"
