@@ -147,7 +147,33 @@ def safe_join(root, rel):
     return full
 
 
+def _macos_native_dialog(kind, filetypes=None):
+    """File/folder picker via osascript — no main-thread constraint on macOS."""
+    try:
+        if kind == 'folder':
+            script = 'POSIX path of (choose folder with prompt "Choisir un dossier")'
+        else:
+            exts = [p[2:] for _, p in (filetypes or []) if p not in ('*.*', '*')]
+            if exts:
+                type_list = '{' + ', '.join(f'"{e}"' for e in exts) + '}'
+                script = (
+                    f'POSIX path of (choose file of type {type_list}'
+                    f' with prompt "Choisir un fichier")'
+                )
+            else:
+                script = 'POSIX path of (choose file with prompt "Choisir un fichier")'
+        r = subprocess.run(
+            ['osascript', '-e', script],
+            capture_output=True, text=True, timeout=300,
+        )
+        return r.stdout.strip() if r.returncode == 0 else ''
+    except Exception:
+        return ''
+
+
 def _tk_dialog(kind, **kwargs):
+    if sys.platform == 'darwin':
+        return _macos_native_dialog(kind, filetypes=kwargs.get('filetypes'))
     import tkinter as tk
     from tkinter import filedialog
     root_tk = tk.Tk()
@@ -675,6 +701,17 @@ def open_browser():
 
 
 if __name__ == '__main__':
+    if getattr(sys, 'frozen', False) and sys.platform == 'darwin':
+        # console=False means all stderr is swallowed; redirect to a log file so
+        # startup crashes are diagnosable (~/.atelier-gabc/startup.log).
+        try:
+            _log_path = os.path.join(_USER_DIR, 'startup.log')
+            _log_f = open(_log_path, 'w', buffering=1, encoding='utf-8')
+            sys.stdout = _log_f
+            sys.stderr = _log_f
+        except Exception:
+            pass
+
     if getattr(sys, 'frozen', False):
         # Velopack calls this binary with --veloapp-* args for lifecycle hooks.
         # Must exit quickly without starting Flask or opening a browser.
