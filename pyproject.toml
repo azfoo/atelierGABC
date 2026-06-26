@@ -1,6 +1,6 @@
 [project]
 name = "atelier-gabc"
-version = "0.0.1"
+version = "0.0.2"
 description = "Éditeur GABC et compilateur PDF pour le chant grégorien"
 requires-python = ">=3.11"
 dependencies = [
