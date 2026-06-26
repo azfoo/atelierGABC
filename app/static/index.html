@@ -574,6 +574,7 @@ let _updating = false;
 let loading = false;      // true while setValue is running; suppresses dirty flag
 let previewTimer = null;
 let gabcRoot = '';
+let _browseInProgress = false;
 
 // ── API helper ───────────────────────────────────────────────────────────
 
@@ -599,8 +600,16 @@ async function init() {
   }
 }
 
+async function _browseApi(url) {
+  if (_browseInProgress) return null;
+  _browseInProgress = true;
+  try { return await api(url); }
+  finally { _browseInProgress = false; }
+}
+
 async function browse(inputId) {
-  const res = await api('/api/browse-folder');
+  const res = await _browseApi('/api/browse-folder');
+  if (!res) return;
   if (res.path) {
     document.getElementById(inputId).value = res.path;
   } else {
@@ -609,8 +618,8 @@ async function browse(inputId) {
 }
 
 async function browseFile(inputId) {
-  const res = await api('/api/browse-file');
-  if (res.path) document.getElementById(inputId).value = res.path;
+  const res = await _browseApi('/api/browse-file');
+  if (res && res.path) document.getElementById(inputId).value = res.path;
 }
 
 async function detectLualatex() {
@@ -854,8 +863,8 @@ async function newFile() {
 }
 
 async function openCurrentFolder() {
-  const res = await api('/api/browse-folder');
-  if (!res.path) return;
+  const res = await _browseApi('/api/browse-folder');
+  if (!res || !res.path) return;
   gabcRoot = res.path;
   const settings = await api('/api/settings');
   const updated = Object.assign({}, settings, { gabc_root: gabcRoot });
@@ -978,13 +987,13 @@ async function saveSettingsModal() {
 }
 
 async function browseModal(inputId) {
-  const res = await api('/api/browse-folder');
-  if (res.path) document.getElementById(inputId).value = res.path;
+  const res = await _browseApi('/api/browse-folder');
+  if (res && res.path) document.getElementById(inputId).value = res.path;
 }
 
 async function browseFileModal(inputId) {
-  const res = await api('/api/browse-file');
-  if (res.path) document.getElementById(inputId).value = res.path;
+  const res = await _browseApi('/api/browse-file');
+  if (res && res.path) document.getElementById(inputId).value = res.path;
 }
 
 async function detectLualatexModal() {

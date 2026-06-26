@@ -171,20 +171,30 @@ def _macos_native_dialog(kind, filetypes=None):
         return ''
 
 
+_dialog_lock = threading.Lock()
+
+
 def _tk_dialog(kind, **kwargs):
-    if sys.platform == 'darwin':
-        return _macos_native_dialog(kind, filetypes=kwargs.get('filetypes'))
-    import tkinter as tk
-    from tkinter import filedialog
-    root_tk = tk.Tk()
-    root_tk.withdraw()
-    root_tk.attributes('-topmost', True)
+    # Prevent concurrent dialogs: Flask is threaded and a second click while the
+    # first dialog is open would otherwise spawn a second picker.
+    if not _dialog_lock.acquire(blocking=False):
+        return ''
     try:
-        if kind == 'file':
-            return filedialog.askopenfilename(**kwargs) or ''
-        return filedialog.askdirectory(**kwargs) or ''
+        if sys.platform == 'darwin':
+            return _macos_native_dialog(kind, filetypes=kwargs.get('filetypes'))
+        import tkinter as tk
+        from tkinter import filedialog
+        root_tk = tk.Tk()
+        root_tk.withdraw()
+        root_tk.attributes('-topmost', True)
+        try:
+            if kind == 'file':
+                return filedialog.askopenfilename(**kwargs) or ''
+            return filedialog.askdirectory(**kwargs) or ''
+        finally:
+            root_tk.destroy()
     finally:
-        root_tk.destroy()
+        _dialog_lock.release()
 
 
 @app.route('/')
