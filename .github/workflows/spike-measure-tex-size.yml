@@ -1,0 +1,151 @@
+name: Spike — measure minimal TeX + Lilypond size
+
+# Throwaway measurement job for the "bundle vs require system TeX" decision
+# (see TODO.md Phase 0). Not part of the release pipeline — safe to delete
+# once the bundling decision is made.
+#
+# Installs a minimal custom TeX Live scheme (via tlmgr, not the OS package
+# manager, since that's what an actual bundle would use) plus Lilypond (via
+# each OS's native package manager, since Lilypond ships its own platform
+# binaries rather than going through TeX Live), and reports the disk-usage
+# delta before/after on each of the three target platforms.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  measure:
+    name: Measure (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15-intel
+            platform: macos
+          - os: windows-latest
+            platform: windows
+          - os: ubuntu-latest
+            platform: linux
+
+    steps:
+      - name: Disk usage before (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          df -k / | tail -1 | awk '{print $3}' > before.txt
+          cat before.txt
+
+      - name: Disk usage before (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          (Get-PSDrive C).Used | Out-File -FilePath before.txt
+          Get-Content before.txt
+
+      # ── Minimal TeX Live scheme via tlmgr (same method on all 3 OSes) ──
+
+      - name: Install minimal TeX Live scheme (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -e
+          curl -sL https://mirror.ctan.org/systems/texlive/tlnet/install-tl-unx.tar.gz -o install-tl.tar.gz
+          mkdir install-tl && tar -xzf install-tl.tar.gz -C install-tl --strip-components=1
+          cat > profile.txt <<'EOF'
+          selected_scheme scheme-basic
+          TEXDIR ./texlive-min
+          TEXMFLOCAL ./texlive-min/texmf-local
+          TEXMFSYSVAR ./texlive-min/texmf-var
+          TEXMFSYSCONFIG ./texlive-min/texmf-config
+          TEXMFVAR ./texlive-min/texmf-var-user
+          TEXMFCONFIG ./texlive-min/texmf-config-user
+          TEXMFHOME ./texlive-min/texmf-home
+          instopt_adjustpath 0
+          instopt_adjustrepo 0
+          tlpdbopt_autobackup 0
+          tlpdbopt_install_docfiles 0
+          tlpdbopt_install_srcfiles 0
+          EOF
+          ./install-tl/install-tl -profile profile.txt || true
+          TLBIN=$(find "$PWD/texlive-min/bin" -maxdepth 1 -mindepth 1 -type d | head -1)
+          echo "TLBIN=$TLBIN" >> "$GITHUB_ENV"
+          "$TLBIN/tlmgr" install luatex latex-bin latex graphics pifont gregoriotex || true
+          du -sh ./texlive-min || true
+
+      - name: Install minimal TeX Live scheme (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://mirror.ctan.org/systems/texlive/tlnet/install-tl-windows.exe" -OutFile "install-tl-windows.exe"
+          $profile = @"
+          selected_scheme scheme-basic
+          TEXDIR ./texlive-min
+          TEXMFLOCAL ./texlive-min/texmf-local
+          TEXMFSYSVAR ./texlive-min/texmf-var
+          TEXMFSYSCONFIG ./texlive-min/texmf-config
+          TEXMFVAR ./texlive-min/texmf-var-user
+          TEXMFCONFIG ./texlive-min/texmf-config-user
+          TEXMFHOME ./texlive-min/texmf-home
+          instopt_adjustpath 0
+          instopt_adjustrepo 0
+          tlpdbopt_autobackup 0
+          tlpdbopt_install_docfiles 0
+          tlpdbopt_install_srcfiles 0
+          "@
+          Set-Content -Path profile.txt -Value $profile
+          Start-Process -FilePath ".\install-tl-windows.exe" -ArgumentList "-no-gui -profile profile.txt" -Wait
+          $tlbin = Get-ChildItem -Path ".\texlive-min\bin" -Directory | Select-Object -First 1
+          & "$($tlbin.FullName)\tlmgr.bat" install luatex latex-bin latex graphics pifont gregoriotex
+          "TLBIN=$($tlbin.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      # ── Lilypond via each OS's native package manager ──
+
+      - name: Install Lilypond (macOS)
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: brew install lilypond
+
+      - name: Install Lilypond (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: choco install lilypond -y --no-progress
+
+      - name: Install Lilypond (Linux)
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends lilypond
+
+      - name: Disk usage after + report (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          df -k / | tail -1 | awk '{print $3}' > after.txt
+          before=$(cat before.txt)
+          after=$(cat after.txt)
+          delta_kb=$((after - before))
+          {
+            echo "## TeX + Lilypond size — ${{ matrix.platform }}"
+            echo "- Disk used before: $((before / 1024)) MB"
+            echo "- Disk used after: $((after / 1024)) MB"
+            echo "- **Delta (TeX Live minimal scheme + Lilypond): $((delta_kb / 1024)) MB**"
+            echo ""
+            echo "texlive-min directory:"
+            echo '```'
+            du -sh ./texlive-min 2>/dev/null || echo "(not found)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Disk usage after + report (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $after = (Get-PSDrive C).Used
+          $before = Get-Content before.txt
+          $deltaMB = [math]::Round(($after - $before) / 1MB, 1)
+          $beforeMB = [math]::Round($before / 1MB, 1)
+          $afterMB = [math]::Round($after / 1MB, 1)
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## TeX + Lilypond size - windows"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Disk used before: $beforeMB MB"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Disk used after: $afterMB MB"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- **Delta (TeX Live minimal scheme + Lilypond): $deltaMB MB**"
