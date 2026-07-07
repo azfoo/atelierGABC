@@ -229,7 +229,9 @@ jobs:
           % fonts are OS-installed via fontspec, not part of the TeX bundle).
           \documentclass{article}
           \usepackage{fontspec}
-          \usepackage{gregoriotex}
+          % debug=snippet keeps test.gsnippet/test.gsniplog for the failure
+          % dump (macOS chase) — drop the option once that's resolved
+          \usepackage[debug=snippet]{gregoriotex}
           \usepackage{graphicx}
           \usepackage{pifont}
           \usepackage{luacode}
@@ -261,6 +263,11 @@ jobs:
           \end{document}
           EOF
           cat head.tex frpunct-embedded.lua tail.tex > smoke/test.tex
+          # exactly what gregoriotex's direct_gabc feeds gregorio for the
+          # \gabcsnippet above (argument newline collapses to a space) —
+          # lets the compile step probe gregorio directly, since macOS
+          # produces a gtex that differs from Linux's (120 lines here)
+          printf 'name:direct-gabc;\n\n%%%%\n(c4) KY(g)ri(h)e(hg) *() e(hih)lé(g)i(f)son.(g) (::) Chri(g)ste(hg) e(hih)lé(g)i(f)son.(g) (::)' > smoke/probe.gabc
           # macOS produced a test.tex with a different line count than
           # Linux (same script!) — record the assembly arithmetic so a
           # failure annotation shows where any extra lines come from
@@ -281,6 +288,10 @@ jobs:
           # tee into logs the failure-diagnostics step can dump as public
           # annotations (step logs and summaries need a login to read)
           { echo "PATH=$PATH"; which lilypond lualatex gregorio repstopdf gs || true; } | tee env.log
+          # gregorio probe: same input direct_gabc writes; compare the
+          # resulting gtex across platforms (linux reference: 120 lines)
+          { gregorio --version | head -2; gregorio -W -o probe.gtex -l probe.gsniplog probe.gabc; echo "probe exit=$?"; wc -l probe.gtex; } > probe.info 2>&1 || true
+          cat probe.info
           # 1. preview path
           lilypond -dcrop --pdf piece.ly 2>&1 | tee preview.log
           test -s piece.cropped.pdf && echo "preview path OK: piece.cropped.pdf"
@@ -349,11 +360,10 @@ jobs:
             echo "::error title=$1::$msg"
           }
           dump smoke/env.log
-          dump smoke/prepare.log
+          dump smoke/probe.info
+          dump smoke/probe.gtex
           dump smoke/test.gsnippet
           dump smoke/test.gsniplog
-          dump smoke/test.gtmp
-          dump smoke/preview.log
           dump smoke/lualatex.log
           dump smoke/lualatex2.log
           dump smoke/test.log
