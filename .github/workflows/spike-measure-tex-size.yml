@@ -286,8 +286,14 @@ jobs:
           test -s piece.cropped.pdf && echo "preview path OK: piece.cropped.pdf"
           # 2. single-file export path
           sed -i.bak "s|@LILYPOND@|$LPBIN/lilypond|" test.tex
-          # -shell-escape: required by lyluatex and \gabcsnippet
-          lualatex -shell-escape -interaction=nonstopmode test.tex 2>&1 | tee lualatex.log
+          # -shell-escape: required by lyluatex and \gabcsnippet.
+          # Two passes, like the app's real _compile_file loop —
+          # gregoriotex explicitly asks for a rerun on the first pass
+          # ("Line heights ... may have changed"), and on macOS the first
+          # pass also logs a spurious snippet error that a single-pass
+          # test would wrongly fail on. The final pass decides.
+          lualatex -shell-escape -interaction=nonstopmode test.tex 2>&1 | tee lualatex.log || true
+          lualatex -shell-escape -interaction=nonstopmode test.tex 2>&1 | tee lualatex2.log
           test -s test.pdf && echo "export path OK: test.pdf produced"
 
       - name: Compile smoke test (Windows)
@@ -307,7 +313,10 @@ jobs:
           # setup (e.g. program={C:/Program Files (x86)/lilypond/bin/lilypond.exe})
           $lp = "$env:LPBIN/lilypond.exe" -replace '\\', '/'
           (Get-Content test.tex) -replace '@LILYPOND@', $lp | Set-Content test.tex
+          # two passes, matching the app's multi-pass compile loop (see
+          # the bash step) — the final pass decides
           & lualatex.exe -shell-escape -interaction=nonstopmode test.tex 2>&1 | Tee-Object -FilePath lualatex.log
+          & lualatex.exe -shell-escape -interaction=nonstopmode test.tex 2>&1 | Tee-Object -FilePath lualatex2.log
           if ($LASTEXITCODE -ne 0) { throw "lualatex failed ($LASTEXITCODE)" }
           if (-not (Test-Path test.pdf)) { throw "smoke test failed: no test.pdf" }
           Write-Output "smoke test OK: test.pdf produced"
@@ -341,10 +350,12 @@ jobs:
           }
           dump smoke/env.log
           dump smoke/prepare.log
-          dump smoke/test.tex
+          dump smoke/test.gsnippet
           dump smoke/test.gsniplog
+          dump smoke/test.gtmp
           dump smoke/preview.log
           dump smoke/lualatex.log
+          dump smoke/lualatex2.log
           dump smoke/test.log
 
       - name: Dump failure diagnostics (Windows)
