@@ -242,27 +242,36 @@ jobs:
           \definecolor{rougeliturgique}{cmyk}{0,1,0,0}
           \grechangestaffsize{16}
           \gresetlastline{ragged}
-          % macOS chase: record what \gabcsnippet's lua side receives and
-          % what it feeds back to TeX (dumped on failure) — remove once
-          % resolved. string.char(10) because backslash-n can't survive
-          % inside \directlua.
+          % Workaround for the macOS luahbtex input-buffer bug found by the
+          % run-9 trace (the engine re-delivers a chunk of the input file
+          % after \gabcsnippet's ~120-line tex.print pseudo-file): compile
+          % the snippet to a real .gtex file and \input it — one short line
+          % into the input stack. This replacement for gregoriotex's
+          % direct_gabc is what the app's one-file exporter should embed.
+          % NB inside \directlua TeX eats percent-to-EOL, so the lua builds
+          % percent/backslash/newline via string.char.
           \directlua{
             local NL = string.char(10)
-            local orig = gregoriotex.direct_gabc
-            gregoriotex.direct_gabc = function(g, h, a)
-              local f = io.open('dbg-arg.txt', 'a')
-              f:write('entry at input line ' .. tostring(tex.inputlineno) .. NL .. g .. NL) f:close()
-              local rp = tex.print
-              tex.print = function(x)
-                local d = io.open('dbg-print.txt', 'a')
-                if type(x) == 'table' then d:write(table.concat(x, NL)) else d:write(tostring(x)) end
-                d:write(NL .. '===END CALL===' .. NL) d:close()
-                return rp(x)
+            local BS = string.char(92)
+            local PC = string.char(37)
+            local n = 0
+            gregoriotex.direct_gabc = function(gabc, header, allow)
+              n = n + 1
+              local name = 'gabcsnip-' .. tostring(n)
+              local f = io.open(name .. '.gabc', 'w')
+              f:write('name:direct-gabc;' .. NL .. (header or '') .. NL .. PC .. PC .. NL .. gabc:gsub(BS .. 'par', NL))
+              f:close()
+              local cmd = {'gregorio', '-W'}
+              if allow then table.insert(cmd, '-D') end
+              table.insert(cmd, '-o') table.insert(cmd, name .. '.gtex')
+              table.insert(cmd, '-l') table.insert(cmd, name .. '.glog')
+              table.insert(cmd, name .. '.gabc')
+              local rc = os.spawn(cmd)
+              if rc ~= 0 then
+                tex.error('gabc snippet compilation failed, see ' .. name .. '.glog')
+              else
+                tex.print(BS .. 'input ' .. name .. '.gtex ')
               end
-              orig(g, h, a)
-              tex.print = rp
-              f = io.open('dbg-arg.txt', 'a')
-              f:write('exit at input line ' .. tostring(tex.inputlineno) .. NL) f:close()
             end
           }
           % staffsize option = the one-file stand-in for shared defs.ily
@@ -410,9 +419,8 @@ jobs:
             echo "::error title=$1::$msg"
           }
           dump smoke/env.log
-          dump smoke/dbg-arg.txt
           dump smoke/dbg-buffenv.txt
-          dump smoke/dbg-print.txt
+          dump smoke/gabcsnip-1.glog
           dump smoke/lualatex.log
           dump smoke/lualatex2.log
           dump smoke/test.log
