@@ -9,6 +9,25 @@ name: Spike — measure minimal TeX + Lilypond size
 # each OS's native package manager, since Lilypond ships its own platform
 # binaries rather than going through TeX Live), and reports the disk-usage
 # delta before/after on each of the three target platforms.
+#
+# Lessons from the first run, now baked in:
+# - Pin one known-good CTAN repo (tlnet.yihui.org, TinyTeX's dedicated
+#   mirror) instead of mirror.ctan.org — the round-robin can hand out a
+#   dead/glacial mirror, which is what killed the Linux leg and most
+#   likely what made the Windows leg run past 6 hours.
+# - The original package list compiled nothing; a real gregorio+lualatex
+#   compile needs these on top: fontspec xcolor kvoptions luacolor
+#   luatexbase luamplib xstring (verified by compiling an actual .gabc
+#   through the app's template locally).
+# - timeout-minutes so a hang fails in 1h, not GitHub's 6h default.
+
+env:
+  CTAN_REPO: https://tlnet.yihui.org
+  # The lyluatex group (lyluatex … metalogo) is for \lilypondfile-based
+  # embedding — tlmgr does not pull these in as dependencies of lyluatex,
+  # each one surfaced as a missing-file error in a real compile.
+  TL_PACKAGES: luatex latex-bin latex graphics pifont gregoriotex fontspec xcolor kvoptions luacolor luatexbase luamplib xstring lyluatex minibox environ currfile filehook pdfpages luaoptions xkeyval metalogo
+  LILYPOND_VERSION: 2.26.0
 
 on:
   workflow_dispatch:
@@ -17,18 +36,28 @@ jobs:
   measure:
     name: Measure (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         include:
+          # lilypond_arch matches the official relocatable archives on
+          # GitLab releases — that's what an actual bundle would ship,
+          # unlike brew/choco/apt installs (darwin-x86_64 on the Intel
+          # runner, same as the app's own Intel-only mac build).
           - os: macos-15-intel
             platform: macos
+            lilypond_arch: darwin-x86_64
           - os: windows-latest
             platform: windows
+            lilypond_arch: mingw-x86_64
           - os: ubuntu-latest
             platform: linux
+            lilypond_arch: linux-x86_64
 
     steps:
+      - uses: actions/checkout@v6   # for app/defaults/frpunct.{tex,lua}
+
       - name: Disk usage before (macOS/Linux)
         if: runner.os != 'Windows'
         shell: bash
@@ -50,7 +79,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          curl -sL https://mirror.ctan.org/systems/texlive/tlnet/install-tl-unx.tar.gz -o install-tl.tar.gz
+          curl -sL --retry 10 --retry-delay 30 "$CTAN_REPO/install-tl-unx.tar.gz" -o install-tl.tar.gz
           mkdir install-tl && tar -xzf install-tl.tar.gz -C install-tl --strip-components=1
           cat > profile.txt <<'EOF'
           selected_scheme scheme-basic
@@ -67,17 +96,17 @@ jobs:
           tlpdbopt_install_docfiles 0
           tlpdbopt_install_srcfiles 0
           EOF
-          ./install-tl/install-tl -profile profile.txt || true
+          ./install-tl/install-tl -profile profile.txt -repository "$CTAN_REPO"
           TLBIN=$(find "$PWD/texlive-min/bin" -maxdepth 1 -mindepth 1 -type d | head -1)
           echo "TLBIN=$TLBIN" >> "$GITHUB_ENV"
-          "$TLBIN/tlmgr" install luatex latex-bin latex graphics pifont gregoriotex || true
-          du -sh ./texlive-min || true
+          "$TLBIN/tlmgr" --repository "$CTAN_REPO" install $TL_PACKAGES
+          du -sh ./texlive-min
 
       - name: Install minimal TeX Live scheme (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Invoke-WebRequest -Uri "https://mirror.ctan.org/systems/texlive/tlnet/install-tl-windows.exe" -OutFile "install-tl-windows.exe"
+          Invoke-WebRequest -Uri "$env:CTAN_REPO/install-tl-windows.exe" -OutFile "install-tl-windows.exe"
           $profile = @"
           selected_scheme scheme-basic
           TEXDIR ./texlive-min
@@ -94,27 +123,132 @@ jobs:
           tlpdbopt_install_srcfiles 0
           "@
           Set-Content -Path profile.txt -Value $profile
-          Start-Process -FilePath ".\install-tl-windows.exe" -ArgumentList "-no-gui -profile profile.txt" -Wait
+          Start-Process -FilePath ".\install-tl-windows.exe" -ArgumentList "-no-gui -profile profile.txt -repository $env:CTAN_REPO" -Wait
           $tlbin = Get-ChildItem -Path ".\texlive-min\bin" -Directory | Select-Object -First 1
-          & "$($tlbin.FullName)\tlmgr.bat" install luatex latex-bin latex graphics pifont gregoriotex
+          & "$($tlbin.FullName)\tlmgr.bat" --repository $env:CTAN_REPO install $env:TL_PACKAGES.Split(' ')
           "TLBIN=$($tlbin.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      # ── Lilypond via each OS's native package manager ──
+      # ── Lilypond: official relocatable archive (what a bundle would ship) ──
 
-      - name: Install Lilypond (macOS)
-        if: matrix.platform == 'macos'
+      - name: Install Lilypond (macOS/Linux)
+        if: runner.os != 'Windows'
         shell: bash
-        run: brew install lilypond
+        run: |
+          set -e
+          curl -sL --retry 10 --retry-delay 30 -o lilypond.tar.gz \
+            "https://gitlab.com/lilypond/lilypond/-/releases/v${LILYPOND_VERSION}/downloads/lilypond-${LILYPOND_VERSION}-${{ matrix.lilypond_arch }}.tar.gz"
+          tar -xzf lilypond.tar.gz
+          echo "LPBIN=$PWD/lilypond-${LILYPOND_VERSION}/bin" >> "$GITHUB_ENV"
+          du -sh "lilypond-${LILYPOND_VERSION}"
 
       - name: Install Lilypond (Windows)
-        if: matrix.platform == 'windows'
+        if: runner.os == 'Windows'
         shell: pwsh
-        run: choco install lilypond -y --no-progress
+        run: |
+          Invoke-WebRequest -OutFile lilypond.zip -Uri `
+            "https://gitlab.com/lilypond/lilypond/-/releases/v$env:LILYPOND_VERSION/downloads/lilypond-$env:LILYPOND_VERSION-${{ matrix.lilypond_arch }}.zip"
+          Expand-Archive lilypond.zip -DestinationPath .
+          "LPBIN=$PWD\lilypond-$env:LILYPOND_VERSION\bin" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Install Lilypond (Linux)
-        if: matrix.platform == 'linux'
+      # ── Compile smoke test: the size number is worthless if the bundle  ──
+      # ── can't actually compile the app's real workload — a combined     ──
+      # ── page: text + gabc (gregorio → versioned .gtex →                 ──
+      # ── \gregorioscore[a]) + lilypond (-dcrop → \includegraphics),      ──
+      # ── all through the bundled lualatex.                               ──
+
+      - name: Prepare smoke test files
         shell: bash
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends lilypond
+        run: |
+          mkdir -p smoke/tmp-gre
+          cp app/defaults/frpunct.tex app/defaults/frpunct.lua smoke/
+          cat > smoke/test.gabc <<'EOF'
+          name: Kyrie;
+          %%
+          (c4) KY(g)ri(h)e(hg) *() e(hih)lé(g)i(f)son.(g) (::)
+          Chri(g)ste(hg) e(hih)lé(g)i(f)son.(g) (::)
+          EOF
+          # Two files sharing an include, same shape as the Phase 0
+          # lilypond-embedding spike (shared defs keep staff size consistent)
+          cat > smoke/defs.ily <<'EOF'
+          #(set-global-staff-size 16)
+          \paper { indent = 0 }
+          EOF
+          cat > smoke/piece.ly <<'EOF'
+          \version "2.26.0"
+          \include "defs.ily"
+          \score {
+            \new Staff \relative c' {
+              \key f \major
+              c4 d e f | g2 a | f1 \bar "|."
+            }
+            \addlyrics { Le temps des ce -- ri -- ses }
+          }
+          EOF
+          # Exercises BOTH lilypond-embedding routes: \includegraphics of a
+          # pre-compiled -dcrop PDF (the preview path) and lyluatex's
+          # \lilypondfile (the export path — lilypond invoked mid-compile,
+          # system-by-system insertion so long scores can break across pages).
+          cat > smoke/test.tex <<'EOF'
+          % Same package surface as app/defaults/configuration.tex, with the
+          % proprietary fonts swapped for the bundle's Latin Modern (real
+          % fonts are OS-installed via fontspec, not part of the TeX bundle).
+          \documentclass{article}
+          \usepackage{fontspec}
+          \usepackage{gregoriotex}
+          \usepackage{graphicx}
+          \usepackage{pifont}
+          \input{frpunct.tex}
+          \definecolor{rougeliturgique}{cmyk}{0,1,0,0}
+          \grechangestaffsize{16}
+          \gresetlastline{ragged}
+          \usepackage[program={@LILYPOND@}]{lyluatex}
+          \begin{document}
+          Texte d'essai — ponctuation française : « guillemets » ; point-virgule !
+          {\color{rougeliturgique}\ding{72}} rubrique en rouge.
+
+          \gregorioscore[a]{test}
+
+          \noindent\includegraphics{piece.cropped.pdf}
+
+          \lilypondfile{piece}
+          \end{document}
+          EOF
+
+      - name: Compile smoke test (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -e
+          cd smoke
+          # Versioned .gtex name, same convention as _precompile_gabc in app.py
+          # sed, not grep -P (macOS grep is BSD and has no -P)
+          suffix=$(sed -n "s/.*internalversion *= *'\([^']*\)'.*/\1/p" \
+            ../texlive-min/texmf-dist/tex/luatex/gregoriotex/gregoriotex.lua \
+            | head -1 | tr . _)
+          "$TLBIN/gregorio" -o "tmp-gre/test-${suffix}.gtex" test.gabc
+          "$LPBIN/lilypond" -dcrop --pdf piece.ly
+          sed -i.bak "s|@LILYPOND@|$LPBIN/lilypond|" test.tex
+          # -shell-escape: required by lyluatex (it runs lilypond mid-compile)
+          "$TLBIN/lualatex" -shell-escape -interaction=nonstopmode test.tex
+          test -s test.pdf && echo "smoke test OK: test.pdf produced"
+
+      - name: Compile smoke test (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-Location smoke
+          $lua = Get-Content ..\texlive-min\texmf-dist\tex\luatex\gregoriotex\gregoriotex.lua
+          $suffix = ($lua | Select-String "internalversion\s*=\s*'([^']+)'").Matches[0].Groups[1].Value -replace '\.', '_'
+          & "$env:TLBIN\gregorio.exe" -o "tmp-gre/test-$suffix.gtex" test.gabc
+          & "$env:LPBIN\lilypond.exe" -dcrop --pdf piece.ly
+          # forward slashes in program= — same as a native Windows lyluatex
+          # setup (e.g. program={C:/Program Files (x86)/lilypond/bin/lilypond.exe})
+          $lp = "$env:LPBIN/lilypond.exe" -replace '\\', '/'
+          (Get-Content test.tex) -replace '@LILYPOND@', $lp | Set-Content test.tex
+          & "$env:TLBIN\lualatex.exe" -shell-escape -interaction=nonstopmode test.tex
+          if (-not (Test-Path test.pdf)) { throw "smoke test failed: no test.pdf" }
+          Write-Output "smoke test OK: test.pdf produced"
 
       - name: Disk usage after + report (macOS/Linux)
         if: runner.os != 'Windows'
@@ -130,9 +264,10 @@ jobs:
             echo "- Disk used after: $((after / 1024)) MB"
             echo "- **Delta (TeX Live minimal scheme + Lilypond): $((delta_kb / 1024)) MB**"
             echo ""
-            echo "texlive-min directory:"
+            echo "texlive-min / lilypond directories:"
             echo '```'
-            du -sh ./texlive-min 2>/dev/null || echo "(not found)"
+            du -sh ./texlive-min 2>/dev/null || echo "(texlive-min not found)"
+            du -sh ./lilypond-${LILYPOND_VERSION} 2>/dev/null || echo "(lilypond not found)"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
