@@ -261,6 +261,10 @@ jobs:
           \end{document}
           EOF
           cat head.tex frpunct-embedded.lua tail.tex > smoke/test.tex
+          # macOS produced a test.tex with a different line count than
+          # Linux (same script!) — record the assembly arithmetic so a
+          # failure annotation shows where any extra lines come from
+          wc -l head.tex frpunct-embedded.lua tail.tex smoke/test.tex app/defaults/frpunct.lua | tee smoke/prepare.log
           rm -f head.tex tail.tex frpunct-embedded.lua
 
       - name: Compile smoke test (macOS/Linux)
@@ -308,6 +312,20 @@ jobs:
           if (-not (Test-Path test.pdf)) { throw "smoke test failed: no test.pdf" }
           Write-Output "smoke test OK: test.pdf produced"
 
+      # PDFs as artifacts so the rendering can be eyeballed, not just
+      # exit-code-checked (test.pdf = one-file export path;
+      # piece.cropped.pdf/.png = preview path)
+      - name: Upload result PDFs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-output-${{ matrix.platform }}
+          if-no-files-found: ignore
+          path: |
+            smoke/test.pdf
+            smoke/piece.cropped.pdf
+            smoke/piece.cropped.png
+
       # On failure, surface log tails as ::error:: annotations — annotations
       # are readable via the public check-runs API without a login, unlike
       # step logs and step summaries.
@@ -322,10 +340,12 @@ jobs:
             echo "::error title=$1::$msg"
           }
           dump smoke/env.log
+          dump smoke/prepare.log
+          dump smoke/test.tex
+          dump smoke/test.gsniplog
           dump smoke/preview.log
           dump smoke/lualatex.log
           dump smoke/test.log
-          dump texlive-min/install-tl.log
 
       - name: Dump failure diagnostics (Windows)
         if: failure() && runner.os == 'Windows'
@@ -374,3 +394,14 @@ jobs:
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Disk used before: $beforeMB MB"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Disk used after: $afterMB MB"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- **Delta (TeX Live minimal scheme + Lilypond): $deltaMB MB**"
+          # du -sh equivalents, so the number is comparable with the
+          # macOS/Linux legs (drive-used deltas are noisy: pagefile,
+          # runner background writes — the mac leg once reported 0 MB)
+          $tlMB = [math]::Round((Get-ChildItem -Recurse -Force texlive-min -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB, 1)
+          $lpMB = [math]::Round((Get-ChildItem -Recurse -Force "lilypond-$env:LILYPOND_VERSION" -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB, 1)
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "texlive-min / lilypond directories:"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '```'
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "$tlMB MB  texlive-min"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "$lpMB MB  lilypond-$env:LILYPOND_VERSION"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '```'
