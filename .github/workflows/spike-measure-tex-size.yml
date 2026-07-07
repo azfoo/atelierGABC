@@ -250,7 +250,8 @@ jobs:
             local NL = string.char(10)
             local orig = gregoriotex.direct_gabc
             gregoriotex.direct_gabc = function(g, h, a)
-              local f = io.open('dbg-arg.txt', 'w') f:write(g) f:close()
+              local f = io.open('dbg-arg.txt', 'a')
+              f:write('entry at input line ' .. tostring(tex.inputlineno) .. NL .. g .. NL) f:close()
               local rp = tex.print
               tex.print = function(x)
                 local d = io.open('dbg-print.txt', 'a')
@@ -260,10 +261,37 @@ jobs:
               end
               orig(g, h, a)
               tex.print = rp
+              f = io.open('dbg-arg.txt', 'a')
+              f:write('exit at input line ' .. tostring(tex.inputlineno) .. NL) f:close()
             end
           }
           % staffsize option = the one-file stand-in for shared defs.ily
           \usepackage[program={@LILYPOND@},staffsize=16]{lyluatex}
+          % trace every line the ly-env input-buffer callback sees, with
+          % the engine's idea of the current input line — macOS chase
+          \directlua{
+            local NL = string.char(10)
+            local function blog(s)
+              local d = io.open('dbg-buffenv.txt', 'a') d:write(s .. NL) d:close()
+            end
+            local ob = ly.buffenv_begin
+            ly.buffenv_begin = function()
+              blog('begin at input line ' .. tostring(tex.inputlineno))
+              ob()
+              local inner = ly.buffenv
+              luatexbase.remove_from_callback('process_input_buffer', 'readline')
+              ly.buffenv = function(line)
+                blog('[' .. tostring(tex.inputlineno) .. '] ' .. line)
+                return inner(line)
+              end
+              luatexbase.add_to_callback('process_input_buffer', ly.buffenv, 'readline')
+            end
+            local oe = ly.buffenv_end
+            ly.buffenv_end = function()
+              blog('end at input line ' .. tostring(tex.inputlineno))
+              oe()
+            end
+          }
           \begin{document}
           Texte d'essai — ponctuation française : « guillemets » ; point-virgule !
           {\color{rougeliturgique}\ding{72}} rubrique en rouge.
@@ -382,10 +410,8 @@ jobs:
             echo "::error title=$1::$msg"
           }
           dump smoke/env.log
-          dump smoke/probe.info
-          dump smoke/test.gsnippet
-          dump smoke/test.gsniplog
           dump smoke/dbg-arg.txt
+          dump smoke/dbg-buffenv.txt
           dump smoke/dbg-print.txt
           dump smoke/lualatex.log
           dump smoke/lualatex2.log
