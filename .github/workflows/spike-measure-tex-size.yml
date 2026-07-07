@@ -32,10 +32,17 @@ name: Spike — measure minimal TeX + Lilypond size
 # - pwsh does NOT stop on non-zero native exit codes — every native call
 #   needs an explicit $LASTEXITCODE check or failures pass silently.
 # - Windows TeX Live needs tlgs.windows (bundled ghostscript) for the
-#   EPS→PDF conversion; nothing pulls it in as a dependency. NB for the
-#   bundle decision: a shipped app bundle needs a ghostscript on every
-#   platform for the lyluatex route (GH's ubuntu/macos runners just happen
-#   to have one preinstalled).
+#   EPS→PDF conversion; nothing pulls it in as a dependency.
+#
+# Lessons from the third run (Windows green, Linux/macOS failed in the
+# compile), now baked in:
+# - GH's ubuntu/macos runners do NOT have ghostscript on PATH, and neither
+#   TeX Live scheme-basic nor $LPBIN provide one — epstopdf fails with
+#   "Required program gs not found". Fix costs nothing: the official
+#   Lilypond archive bundles gs 10.06 at libexec/gs, so put
+#   $LPBIN/../libexec on PATH. A shipped app bundle can do exactly the
+#   same (no separate ghostscript to ship on any platform: reuse
+#   lilypond's on mac/linux, tlgs.windows on windows).
 
 env:
   CTAN_REPO: https://tlnet.yihui.org
@@ -261,18 +268,22 @@ jobs:
         timeout-minutes: 15
         shell: bash
         run: |
-          set -e
+          set -eo pipefail
           cd smoke
           # PATH, not absolute paths: shell escapes inside the compile call
-          # gregorio (gabcsnippet) and repstopdf (lyluatex EPS→PDF)
-          export PATH="$TLBIN:$LPBIN:$PATH"
+          # gregorio (gabcsnippet) and repstopdf (lyluatex EPS→PDF), and
+          # repstopdf needs a gs — lilypond's bundled one, in libexec
+          export PATH="$TLBIN:$LPBIN:$LPBIN/../libexec:$PATH"
+          # tee into logs the failure-diagnostics step can dump as public
+          # annotations (step logs and summaries need a login to read)
+          { echo "PATH=$PATH"; which lilypond lualatex gregorio repstopdf gs || true; } | tee env.log
           # 1. preview path
-          lilypond -dcrop --pdf piece.ly
+          lilypond -dcrop --pdf piece.ly 2>&1 | tee preview.log
           test -s piece.cropped.pdf && echo "preview path OK: piece.cropped.pdf"
           # 2. single-file export path
           sed -i.bak "s|@LILYPOND@|$LPBIN/lilypond|" test.tex
           # -shell-escape: required by lyluatex and \gabcsnippet
-          lualatex -shell-escape -interaction=nonstopmode test.tex
+          lualatex -shell-escape -interaction=nonstopmode test.tex 2>&1 | tee lualatex.log
           test -s test.pdf && echo "export path OK: test.pdf produced"
 
       - name: Compile smoke test (Windows)
@@ -284,7 +295,7 @@ jobs:
           Set-Location smoke
           $env:PATH = "$env:TLBIN;$env:LPBIN;$env:PATH"
           # 1. preview path
-          & lilypond.exe -dcrop --pdf piece.ly
+          & lilypond.exe -dcrop --pdf piece.ly 2>&1 | Tee-Object -FilePath preview.log
           if ($LASTEXITCODE -ne 0) { throw "lilypond -dcrop failed ($LASTEXITCODE)" }
           if (-not (Test-Path piece.cropped.pdf)) { throw "preview path failed: no piece.cropped.pdf" }
           # 2. single-file export path
@@ -292,10 +303,42 @@ jobs:
           # setup (e.g. program={C:/Program Files (x86)/lilypond/bin/lilypond.exe})
           $lp = "$env:LPBIN/lilypond.exe" -replace '\\', '/'
           (Get-Content test.tex) -replace '@LILYPOND@', $lp | Set-Content test.tex
-          & lualatex.exe -shell-escape -interaction=nonstopmode test.tex
+          & lualatex.exe -shell-escape -interaction=nonstopmode test.tex 2>&1 | Tee-Object -FilePath lualatex.log
           if ($LASTEXITCODE -ne 0) { throw "lualatex failed ($LASTEXITCODE)" }
           if (-not (Test-Path test.pdf)) { throw "smoke test failed: no test.pdf" }
           Write-Output "smoke test OK: test.pdf produced"
+
+      # On failure, surface log tails as ::error:: annotations — annotations
+      # are readable via the public check-runs API without a login, unlike
+      # step logs and step summaries.
+
+      - name: Dump failure diagnostics (macOS/Linux)
+        if: failure() && runner.os != 'Windows'
+        shell: bash
+        run: |
+          dump() {
+            [ -f "$1" ] || return 0
+            msg=$(python3 -c "import sys; d=open(sys.argv[1],'rb').read()[-2500:].decode('utf-8','replace'); print(d.replace('%','%25').replace('\r','').replace('\n','%0A'))" "$1")
+            echo "::error title=$1::$msg"
+          }
+          dump smoke/env.log
+          dump smoke/preview.log
+          dump smoke/lualatex.log
+          dump smoke/test.log
+          dump texlive-min/install-tl.log
+
+      - name: Dump failure diagnostics (Windows)
+        if: failure() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          foreach ($f in 'smoke\preview.log','smoke\lualatex.log','smoke\test.log','texlive-min\install-tl.log') {
+            if (Test-Path $f) {
+              $t = Get-Content -Raw $f
+              if ($t.Length -gt 2500) { $t = $t.Substring($t.Length - 2500) }
+              $t = $t -replace '%','%25' -replace "`r",'' -replace "`n",'%0A'
+              Write-Output "::error title=$($f -replace '\\','/')::$t"
+            }
+          }
 
       - name: Disk usage after + report (macOS/Linux)
         if: runner.os != 'Windows'
