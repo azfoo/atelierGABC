@@ -242,6 +242,26 @@ jobs:
           \definecolor{rougeliturgique}{cmyk}{0,1,0,0}
           \grechangestaffsize{16}
           \gresetlastline{ragged}
+          % macOS chase: record what \gabcsnippet's lua side receives and
+          % what it feeds back to TeX (dumped on failure) — remove once
+          % resolved. string.char(10) because backslash-n can't survive
+          % inside \directlua.
+          \directlua{
+            local NL = string.char(10)
+            local orig = gregoriotex.direct_gabc
+            gregoriotex.direct_gabc = function(g, h, a)
+              local f = io.open('dbg-arg.txt', 'w') f:write(g) f:close()
+              local rp = tex.print
+              tex.print = function(x)
+                local d = io.open('dbg-print.txt', 'a')
+                if type(x) == 'table' then d:write(table.concat(x, NL)) else d:write(tostring(x)) end
+                d:write(NL .. '===END CALL===' .. NL) d:close()
+                return rp(x)
+              end
+              orig(g, h, a)
+              tex.print = rp
+            end
+          }
           % staffsize option = the one-file stand-in for shared defs.ily
           \usepackage[program={@LILYPOND@},staffsize=16]{lyluatex}
           \begin{document}
@@ -356,14 +376,17 @@ jobs:
         run: |
           dump() {
             [ -f "$1" ] || return 0
-            msg=$(python3 -c "import sys; d=open(sys.argv[1],'rb').read()[-2500:].decode('utf-8','replace'); print(d.replace('%','%25').replace('\r','').replace('\n','%0A'))" "$1")
+            # make carriage returns visible instead of stripping them —
+            # a stray CR is exactly the kind of thing being chased
+            msg=$(python3 -c "import sys; d=open(sys.argv[1],'rb').read()[-2500:].decode('utf-8','replace'); print(d.replace('%','%25').replace('\r','<CR>').replace('\n','%0A'))" "$1")
             echo "::error title=$1::$msg"
           }
           dump smoke/env.log
           dump smoke/probe.info
-          dump smoke/probe.gtex
           dump smoke/test.gsnippet
           dump smoke/test.gsniplog
+          dump smoke/dbg-arg.txt
+          dump smoke/dbg-print.txt
           dump smoke/lualatex.log
           dump smoke/lualatex2.log
           dump smoke/test.log
