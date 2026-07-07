@@ -6,27 +6,46 @@ name: Spike — measure minimal TeX + Lilypond size
 #
 # Installs a minimal custom TeX Live scheme (via tlmgr, not the OS package
 # manager, since that's what an actual bundle would use) plus Lilypond (via
-# each OS's native package manager, since Lilypond ships its own platform
-# binaries rather than going through TeX Live), and reports the disk-usage
-# delta before/after on each of the three target platforms.
+# the official relocatable archives), and reports the disk-usage delta
+# before/after on each of the three target platforms.
 #
 # Lessons from the first run, now baked in:
 # - Pin one known-good CTAN repo (tlnet.yihui.org, TinyTeX's dedicated
 #   mirror) instead of mirror.ctan.org — the round-robin can hand out a
-#   dead/glacial mirror, which is what killed the Linux leg and most
-#   likely what made the Windows leg run past 6 hours.
-# - The original package list compiled nothing; a real gregorio+lualatex
-#   compile needs these on top: fontspec xcolor kvoptions luacolor
-#   luatexbase luamplib xstring (verified by compiling an actual .gabc
-#   through the app's template locally).
+#   dead/glacial mirror.
+# - A real gregorio+lualatex compile needs more than the obvious packages;
+#   the current TL_PACKAGES list is verified by the smoke test below.
 # - timeout-minutes so a hang fails in 1h, not GitHub's 6h default.
+#
+# Lessons from the second run, now baked in:
+# - "pifont" is not a TeX Live package name (pifont.sty ships inside psnfss,
+#   which scheme-basic already installs) — tlmgr exits 1 on the unknown name,
+#   which is what killed the Linux and macOS legs.
+# - TLBIN/LPBIN must be on PATH for the compile: lyluatex's EPS output is
+#   converted by epstopdf-base shell-escaping `repstopdf`, and gregoriotex
+#   shell-escapes `gregorio` for inline snippets. Absolute paths to lualatex
+#   alone are not enough.
+# - install-tl-windows.exe is a GUI self-extractor; on a headless runner any
+#   prompt or error dialog blocks forever (both runs hung there). Use
+#   install-tl.zip + install-tl-windows.bat -no-gui instead (console-only,
+#   same path TinyTeX uses), and give downloads/steps explicit timeouts.
+# - pwsh does NOT stop on non-zero native exit codes — every native call
+#   needs an explicit $LASTEXITCODE check or failures pass silently.
+# - Windows TeX Live needs tlgs.windows (bundled ghostscript) for the
+#   EPS→PDF conversion; nothing pulls it in as a dependency. NB for the
+#   bundle decision: a shipped app bundle needs a ghostscript on every
+#   platform for the lyluatex route (GH's ubuntu/macos runners just happen
+#   to have one preinstalled).
 
 env:
   CTAN_REPO: https://tlnet.yihui.org
-  # The lyluatex group (lyluatex … metalogo) is for \lilypondfile-based
-  # embedding — tlmgr does not pull these in as dependencies of lyluatex,
-  # each one surfaced as a missing-file error in a real compile.
-  TL_PACKAGES: luatex latex-bin latex graphics pifont gregoriotex fontspec xcolor kvoptions luacolor luatexbase luamplib xstring lyluatex minibox environ currfile filehook pdfpages luaoptions xkeyval metalogo
+  # The lyluatex group (lyluatex … metalogo) is for lilypond embedding —
+  # tlmgr does not pull these in as dependencies of lyluatex, each one
+  # surfaced as a missing-file error in a real compile. luacode is for
+  # embedding frpunct.lua verbatim in a single-file export (luacode*
+  # preserves newlines, which \directlua does not — the lua `--` comments
+  # would swallow the rest of the chunk).
+  TL_PACKAGES: luatex latex-bin latex graphics gregoriotex fontspec xcolor kvoptions luacolor luatexbase luamplib xstring luacode lyluatex minibox environ currfile filehook pdfpages luaoptions xkeyval metalogo
   LILYPOND_VERSION: 2.26.0
 
 on:
@@ -56,7 +75,7 @@ jobs:
             lilypond_arch: linux-x86_64
 
     steps:
-      - uses: actions/checkout@v6   # for app/defaults/frpunct.{tex,lua}
+      - uses: actions/checkout@v6   # for app/defaults/frpunct.lua
 
       - name: Disk usage before (macOS/Linux)
         if: runner.os != 'Windows'
@@ -76,6 +95,7 @@ jobs:
 
       - name: Install minimal TeX Live scheme (macOS/Linux)
         if: runner.os != 'Windows'
+        timeout-minutes: 30
         shell: bash
         run: |
           set -e
@@ -104,10 +124,17 @@ jobs:
 
       - name: Install minimal TeX Live scheme (Windows)
         if: runner.os == 'Windows'
+        timeout-minutes: 30
         shell: pwsh
         run: |
-          Invoke-WebRequest -Uri "$env:CTAN_REPO/install-tl-windows.exe" -OutFile "install-tl-windows.exe"
-          $profile = @"
+          $ErrorActionPreference = 'Stop'
+          # install-tl.zip + install-tl-windows.bat, NOT install-tl-windows.exe:
+          # the .exe is a GUI self-extractor that blocks forever on a headless
+          # runner if anything prompts.
+          Invoke-WebRequest -Uri "$env:CTAN_REPO/install-tl.zip" -OutFile install-tl.zip -TimeoutSec 600
+          Expand-Archive install-tl.zip -DestinationPath .
+          $tlroot = Get-ChildItem -Directory -Filter 'install-tl-*' | Select-Object -First 1
+          $tlprofile = @"
           selected_scheme scheme-basic
           TEXDIR ./texlive-min
           TEXMFLOCAL ./texlive-min/texmf-local
@@ -122,16 +149,20 @@ jobs:
           tlpdbopt_install_docfiles 0
           tlpdbopt_install_srcfiles 0
           "@
-          Set-Content -Path profile.txt -Value $profile
-          Start-Process -FilePath ".\install-tl-windows.exe" -ArgumentList "-no-gui -profile profile.txt -repository $env:CTAN_REPO" -Wait
+          Set-Content -Path profile.txt -Value $tlprofile
+          & "$($tlroot.FullName)\install-tl-windows.bat" -no-gui -profile profile.txt -repository $env:CTAN_REPO
+          if ($LASTEXITCODE -ne 0) { throw "install-tl failed ($LASTEXITCODE)" }
           $tlbin = Get-ChildItem -Path ".\texlive-min\bin" -Directory | Select-Object -First 1
-          & "$($tlbin.FullName)\tlmgr.bat" --repository $env:CTAN_REPO install $env:TL_PACKAGES.Split(' ')
+          # tlgs.windows: TL's bundled ghostscript, needed by repstopdf
+          & "$($tlbin.FullName)\tlmgr.bat" --repository $env:CTAN_REPO install ($env:TL_PACKAGES.Split(' ') + 'tlgs.windows')
+          if ($LASTEXITCODE -ne 0) { throw "tlmgr install failed ($LASTEXITCODE)" }
           "TLBIN=$($tlbin.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       # ── Lilypond: official relocatable archive (what a bundle would ship) ──
 
       - name: Install Lilypond (macOS/Linux)
         if: runner.os != 'Windows'
+        timeout-minutes: 15
         shell: bash
         run: |
           set -e
@@ -143,39 +174,36 @@ jobs:
 
       - name: Install Lilypond (Windows)
         if: runner.os == 'Windows'
+        timeout-minutes: 15
         shell: pwsh
         run: |
-          Invoke-WebRequest -OutFile lilypond.zip -Uri `
+          $ErrorActionPreference = 'Stop'
+          Invoke-WebRequest -TimeoutSec 600 -OutFile lilypond.zip -Uri `
             "https://gitlab.com/lilypond/lilypond/-/releases/v$env:LILYPOND_VERSION/downloads/lilypond-$env:LILYPOND_VERSION-${{ matrix.lilypond_arch }}.zip"
           Expand-Archive lilypond.zip -DestinationPath .
           "LPBIN=$PWD\lilypond-$env:LILYPOND_VERSION\bin" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       # ── Compile smoke test: the size number is worthless if the bundle  ──
-      # ── can't actually compile the app's real workload — a combined     ──
-      # ── page: text + gabc (gregorio → versioned .gtex →                 ──
-      # ── \gregorioscore[a]) + lilypond (-dcrop → \includegraphics),      ──
-      # ── all through the bundled lualatex.                               ──
+      # ── can't compile the app's real workload. Two paths:               ──
+      # ──  1. preview path — an external .ly (as linked in a project      ──
+      # ──     file) cropped to PDF with lilypond -dcrop, and              ──
+      # ──  2. export path — ONE self-contained .tex, mirroring the        ──
+      # ──     app's single-file export: defs first (frpunct.lua embedded  ──
+      # ──     verbatim via luacode*), then the body with the gabc and     ──
+      # ──     lilypond sources inline (\gabcsnippet + lyluatex's ly env,  ──
+      # ──     both compiled mid-run via shell escape). No external        ──
+      # ──     \input/\includegraphics/\gregorioscore/\lilypondfile refs.  ──
 
       - name: Prepare smoke test files
         shell: bash
         run: |
-          mkdir -p smoke/tmp-gre
-          cp app/defaults/frpunct.tex app/defaults/frpunct.lua smoke/
-          cat > smoke/test.gabc <<'EOF'
-          name: Kyrie;
-          %%
-          (c4) KY(g)ri(h)e(hg) *() e(hih)lé(g)i(f)son.(g) (::)
-          Chri(g)ste(hg) e(hih)lé(g)i(f)son.(g) (::)
-          EOF
-          # Two files sharing an include, same shape as the Phase 0
-          # lilypond-embedding spike (shared defs keep staff size consistent)
-          cat > smoke/defs.ily <<'EOF'
-          #(set-global-staff-size 16)
-          \paper { indent = 0 }
-          EOF
+          set -e
+          mkdir -p smoke
+          # preview-path input: external .ly like the ones users link
           cat > smoke/piece.ly <<'EOF'
           \version "2.26.0"
-          \include "defs.ily"
+          #(set-global-staff-size 16)
+          \paper { indent = 0 }
           \score {
             \new Staff \relative c' {
               \key f \major
@@ -184,11 +212,11 @@ jobs:
             \addlyrics { Le temps des ce -- ri -- ses }
           }
           EOF
-          # Exercises BOTH lilypond-embedding routes: \includegraphics of a
-          # pre-compiled -dcrop PDF (the preview path) and lyluatex's
-          # \lilypondfile (the export path — lilypond invoked mid-compile,
-          # system-by-system insertion so long scores can break across pages).
-          cat > smoke/test.tex <<'EOF'
+          # single-file export: the app's exporter will embed frpunct.lua as a
+          # luacode* chunk, registering the callback instead of returning it
+          sed 's/^return french_punctuation$/luatexbase.add_to_callback("kerning", french_punctuation, "frpunct.french_punctuation")/' \
+            app/defaults/frpunct.lua > frpunct-embedded.lua
+          cat > head.tex <<'EOF'
           % Same package surface as app/defaults/configuration.tex, with the
           % proprietary fonts swapped for the bundle's Latin Modern (real
           % fonts are OS-installed via fontspec, not part of the TeX bundle).
@@ -197,56 +225,75 @@ jobs:
           \usepackage{gregoriotex}
           \usepackage{graphicx}
           \usepackage{pifont}
-          \input{frpunct.tex}
+          \usepackage{luacode}
+          \begin{luacode*}
+          EOF
+          cat > tail.tex <<'EOF'
+          \end{luacode*}
           \definecolor{rougeliturgique}{cmyk}{0,1,0,0}
           \grechangestaffsize{16}
           \gresetlastline{ragged}
-          \usepackage[program={@LILYPOND@}]{lyluatex}
+          % staffsize option = the one-file stand-in for shared defs.ily
+          \usepackage[program={@LILYPOND@},staffsize=16]{lyluatex}
           \begin{document}
           Texte d'essai — ponctuation française : « guillemets » ; point-virgule !
           {\color{rougeliturgique}\ding{72}} rubrique en rouge.
 
-          \gregorioscore[a]{test}
+          \gabcsnippet{(c4) KY(g)ri(h)e(hg) *() e(hih)lé(g)i(f)son.(g) (::)
+          Chri(g)ste(hg) e(hih)lé(g)i(f)son.(g) (::)}
 
-          \noindent\includegraphics{piece.cropped.pdf}
-
-          \lilypondfile{piece}
+          \begin{ly}
+          \score {
+            \new Staff \relative c' {
+              \key f \major
+              c4 d e f | g2 a | f1 \bar "|."
+            }
+            \addlyrics { Le temps des ce -- ri -- ses }
+          }
+          \end{ly}
           \end{document}
           EOF
+          cat head.tex frpunct-embedded.lua tail.tex > smoke/test.tex
+          rm -f head.tex tail.tex frpunct-embedded.lua
 
       - name: Compile smoke test (macOS/Linux)
         if: runner.os != 'Windows'
+        timeout-minutes: 15
         shell: bash
         run: |
           set -e
           cd smoke
-          # Versioned .gtex name, same convention as _precompile_gabc in app.py
-          # sed, not grep -P (macOS grep is BSD and has no -P)
-          suffix=$(sed -n "s/.*internalversion *= *'\([^']*\)'.*/\1/p" \
-            ../texlive-min/texmf-dist/tex/luatex/gregoriotex/gregoriotex.lua \
-            | head -1 | tr . _)
-          "$TLBIN/gregorio" -o "tmp-gre/test-${suffix}.gtex" test.gabc
-          "$LPBIN/lilypond" -dcrop --pdf piece.ly
+          # PATH, not absolute paths: shell escapes inside the compile call
+          # gregorio (gabcsnippet) and repstopdf (lyluatex EPS→PDF)
+          export PATH="$TLBIN:$LPBIN:$PATH"
+          # 1. preview path
+          lilypond -dcrop --pdf piece.ly
+          test -s piece.cropped.pdf && echo "preview path OK: piece.cropped.pdf"
+          # 2. single-file export path
           sed -i.bak "s|@LILYPOND@|$LPBIN/lilypond|" test.tex
-          # -shell-escape: required by lyluatex (it runs lilypond mid-compile)
-          "$TLBIN/lualatex" -shell-escape -interaction=nonstopmode test.tex
-          test -s test.pdf && echo "smoke test OK: test.pdf produced"
+          # -shell-escape: required by lyluatex and \gabcsnippet
+          lualatex -shell-escape -interaction=nonstopmode test.tex
+          test -s test.pdf && echo "export path OK: test.pdf produced"
 
       - name: Compile smoke test (Windows)
         if: runner.os == 'Windows'
+        timeout-minutes: 15
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           Set-Location smoke
-          $lua = Get-Content ..\texlive-min\texmf-dist\tex\luatex\gregoriotex\gregoriotex.lua
-          $suffix = ($lua | Select-String "internalversion\s*=\s*'([^']+)'").Matches[0].Groups[1].Value -replace '\.', '_'
-          & "$env:TLBIN\gregorio.exe" -o "tmp-gre/test-$suffix.gtex" test.gabc
-          & "$env:LPBIN\lilypond.exe" -dcrop --pdf piece.ly
+          $env:PATH = "$env:TLBIN;$env:LPBIN;$env:PATH"
+          # 1. preview path
+          & lilypond.exe -dcrop --pdf piece.ly
+          if ($LASTEXITCODE -ne 0) { throw "lilypond -dcrop failed ($LASTEXITCODE)" }
+          if (-not (Test-Path piece.cropped.pdf)) { throw "preview path failed: no piece.cropped.pdf" }
+          # 2. single-file export path
           # forward slashes in program= — same as a native Windows lyluatex
           # setup (e.g. program={C:/Program Files (x86)/lilypond/bin/lilypond.exe})
           $lp = "$env:LPBIN/lilypond.exe" -replace '\\', '/'
           (Get-Content test.tex) -replace '@LILYPOND@', $lp | Set-Content test.tex
-          & "$env:TLBIN\lualatex.exe" -shell-escape -interaction=nonstopmode test.tex
+          & lualatex.exe -shell-escape -interaction=nonstopmode test.tex
+          if ($LASTEXITCODE -ne 0) { throw "lualatex failed ($LASTEXITCODE)" }
           if (-not (Test-Path test.pdf)) { throw "smoke test failed: no test.pdf" }
           Write-Output "smoke test OK: test.pdf produced"
 
