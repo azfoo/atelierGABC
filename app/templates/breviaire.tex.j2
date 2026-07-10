@@ -1,0 +1,159 @@
+% Généré par Atelier Liturgique — fichier autonome, ne
+% référence aucun fichier compagnon (règle « un seul fichier »).
+%
+% Modèle Jinja (mêmes délimiteurs que l'ancien score.tex.j2 : chevrons
+% doublés pour les variables, chevron-pourcent pour les blocs — ne pas les
+% écrire littéralement dans les commentaires, Jinja les interpréterait).
+% Toute la structure TeX vit ici, exporter.py ne fait que préparer les
+% données (lecture des fichiers liés, échappement TeX, macro-isation des
+% styles). Une copie personnalisée de ce fichier placée dans le dossier
+% utilisateur de l'application est prioritaire sur celle-ci (bouton
+% « Modifier le modèle d'export » dans les Paramètres).
+\documentclass{article}
+\usepackage{fontspec}
+% Polices par surface — uniformes par défaut : \setmainfont couvre le corps
+% de texte ET, faute d'override, les paroles gabc (gregoriotex suit la police
+% principale) et lilypond (via l'option rmfamily de lyluatex plus bas). Un
+% nom de police doit être visible PAR NOM des deux moteurs : luaotfload (TeX)
+% et fontconfig/Pango (LilyPond) ; une police installée sur le système
+% satisfait les deux.
+<% if text_font %>
+\setmainfont{<< text_font >>}
+<% endif %>
+% Override facultatif de la police des paroles gabc : gregoriotex n'a pas de
+% macro dédiée, alors on compose la partition dans un groupe qui sélectionne
+% cette famille (vérifié : les paroles adoptent bien la police du groupe).
+<% if gabc_font %>
+\newfontfamily\breviairegabcfont{<< gabc_font >>}
+<% endif %>
+\usepackage{gregoriotex}
+\usepackage{graphicx}
+\usepackage{adjustbox}
+\usepackage{luacode}
+\usepackage{pifont}
+\usepackage{xcolor}
+\usepackage{multicol}
+\usepackage[<< geometry_options >>]{geometry}
+<% if french_spacing == 'babel' %>
+\usepackage[french]{babel}
+% Espace fine avant les deux-points — personnalisation délibérée reprise de
+% frpunct.lua (babel-french met par défaut une espace-mot avant « : »).
+\directlua{if FBsp then FBsp.colon = {.4, 0, 0} end}
+<% else %>
+\begin{luacode*}
+<< frpunct_lua >>
+\end{luacode*}
+<% endif %>
+% Images inline (règle « un seul fichier ») : le binaire voyage en base64
+% dans le .tex ; ce décodeur l'écrit en fichier réel à la compilation et
+% \adjincludegraphics le lit — même cycle de vie que les .gabc de travail.
+% Environnement luacode* et non \directlua : le décodeur a besoin de motifs
+% Lua avec % et de crochets longs, interdits sous les catcodes TeX.
+\begin{luacode*}
+breviaire = breviaire or {}
+do
+  local chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+  local map = {}
+  for i = 1, #chars do map[chars:sub(i, i)] = i - 1 end
+  breviaire.writeimage = function(name, data)
+    local out, n, bits = {}, 0, 0
+    for c in data:gmatch('%S') do
+      local v = map[c]
+      if v then
+        n = n * 64 + v
+        bits = bits + 6
+        if bits >= 8 then
+          bits = bits - 8
+          out[#out + 1] = string.char(math.floor(n / 2 ^ bits))
+          n = n % 2 ^ bits
+        end
+      end
+    end
+    local f = assert(io.open(name, 'wb'))
+    f:write(table.concat(out))
+    f:close()
+  end
+end
+\end{luacode*}
+\definecolor{rougeliturgique}{cmyk}{0,1,0,0}
+\grechangestaffsize{<< staffsize >>}
+\gresetlastline{ragged}
+% ── Styles (defs.styles du fichier .breviaire) ─────────────────────────────
+% Chaque style devient une macro à paramètres numérotés ; le corps du
+% document les appelle avec le contenu des éléments texte.
+<% for s in styles %>
+\newcommand{\<< s.macro >>}[<< s.nargs >>]{<< s.body >>}
+<% endfor %>
+% Compilation gabc par fichiers réels (.gabc → gregorio → .gtex → \input) :
+% une seule ligne entre dans la pile d'entrée, ce qui contourne le bogue de
+% tampon d'entrée du LuaHBTeX universal-darwin (voir TODO Phase 0). Dans un
+% \directlua, les caractères spéciaux TeX sont interdits : antislash via
+% string.char(92), pas de %, pas de _, et surtout pas de ~ (jeton actif qui
+% se textualise en \nobreakspace et corrompt le lua — d'où « rc == 0 » avec
+% branches inversées, jamais « rc ~= 0 »).
+\directlua{
+  local BS = string.char(92)
+  breviaire = breviaire or {}
+  breviaire.gabc = function(name)
+    local cmd = {'gregorio', '-W', '-o', name .. '.gtex', '-l', name .. '.glog', name .. '.gabc'}
+    local rc = os.spawn(cmd)
+    if rc == 0 then
+      tex.print(BS .. 'input ' .. name .. '.gtex ')
+    else
+      tex.error('gabc compilation failed for ' .. name .. ' (voir ' .. name .. '.glog)')
+    end
+  end
+}
+\newcommand{\breviairegabc}[1]{\directlua{breviaire.gabc('#1')}}
+% rmfamily= injects the family into every score's paper block (make-pango-
+% font-tree) and, being set explicitly, auto-activates lyluatex's pass-fonts
+% — so lilypond lyrics use ly_font (which the exporter already resolves to
+% the base text font when no override is set, keeping the default uniform).
+% staffsize is ly's own (falls back to the gabc staffsize in the exporter).
+\usepackage[program={<< lilypond_path >>},staffsize=<< ly_staffsize >><% if ly_font %>,rmfamily={<< ly_font >>}<% endif %>]{lyluatex}
+\begin{document}
+% Taille de base du corps de texte (les styles qui fixent leur propre taille
+% priment localement). Police OpenType via fontspec : \fontsize s'adapte à
+% n'importe quelle valeur sans avertissement de substitution.
+<% if text_size %>
+\fontsize{<< text_size >>}{<< (text_size|float * 1.2)|round(1) >>}\selectfont
+<% endif %>
+<% for item in items %>
+<% if item.missing %>
+{\itshape\small [Fichier manquant : << item.missing_path >>]}\par
+<% elif item.type == 'text' %>
+\<< item.macro >><% for a in item.args %>{<< a >>}<% endfor %>
+
+<% elif item.type == 'gabc' %>
+\begin{filecontents*}[overwrite]{<< item.snippet >>.gabc}
+<< item.content >>
+\end{filecontents*}
+<% if gabc_font %>
+% Groupe sur plusieurs lignes (pas {...} en une ligne) : \breviairegabc émet
+% « \input <nom>.gtex » via \directlua, et une accolade fermante collée serait
+% happée dans le nom de fichier — la fin de ligne fournit la séparation.
+\begingroup\breviairegabcfont
+\breviairegabc{<< item.snippet >>}
+\endgroup
+<% else %>
+\breviairegabc{<< item.snippet >>}
+<% endif %>
+
+<% elif item.type == 'myr' %>
+\begin{ly}
+<< item.content >>
+\end{ly}
+
+<% elif item.type == 'image' %>
+\begin{luacode*}
+breviaire.writeimage('<< item.snippet >>', [==[
+<< item.b64 >>
+]==])
+\end{luacode*}
+\begin{center}
+\adjincludegraphics[<< item.options >>]{<< item.snippet >>}
+\end{center}
+
+<% endif %>
+<% endfor %>
+\end{document}
