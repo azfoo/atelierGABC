@@ -51,6 +51,9 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+      # The check imports the app's exporter, which imports jinja2.
+      - name: Install Python dependencies
+        run: pip install flask jinja2
 
       - name: Install LilyPond (Linux)
         if: runner.os == 'Linux'
@@ -75,8 +78,17 @@ jobs:
           "$machine;$user" -split ';' | Where-Object { $_ } | Sort-Object -Unique |
             ForEach-Object { Add-Content -Path $env:GITHUB_PATH -Value $_ }
 
-      - name: LilyPond resolves the bundled fonts
+      - name: LilyPond resolves the bundled fonts (macOS/Linux)
+        if: runner.os != 'Windows'
         run: python tests/ci/lilypond_font_check.py
+
+      # The PATH refresh above can pull LilyPond's own python ahead of
+      # setup-python's (which has our deps), so invoke the latter explicitly.
+      - name: LilyPond resolves the bundled fonts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "$env:pythonLocation\python.exe" tests/ci/lilypond_font_check.py
 
   # ── Heavy: full toolchain, real compiles. Mirrors the provisioning proven
   #    by spike-measure-tex-size.yml (pinned CTAN mirror, the TL_PACKAGES the
@@ -105,7 +117,9 @@ jobs:
       CTAN_REPO: https://tlnet.yihui.org
       # spike's proven lyluatex+gregorio set, plus the extra packages the app's
       # own template preamble loads (adjustbox+deps, geometry, multicol=tools).
-      TL_PACKAGES: luatex latex-bin latex graphics gregoriotex fontspec xcolor kvoptions luacolor luatexbase luamplib xstring luacode lyluatex minibox environ currfile filehook pdfpages luaoptions xkeyval metalogo adjustbox collectbox trimclip varwidth ifoddpage geometry tools
+      # NB: trimclip is NOT a standalone package — it ships inside adjustbox;
+      # listing it makes tlmgr abort ("not present in repository").
+      TL_PACKAGES: luatex latex-bin latex graphics gregoriotex fontspec xcolor kvoptions luacolor luatexbase luamplib xstring luacode lyluatex minibox environ currfile filehook pdfpages luaoptions xkeyval metalogo adjustbox collectbox varwidth ifoddpage geometry tools
       LILYPOND_VERSION: 2.26.0
     steps:
       - uses: actions/checkout@v6
@@ -203,16 +217,20 @@ jobs:
         shell: bash
         run: |
           set -eo pipefail
+          # Resolve setup-python BEFORE prepending the toolchain: LilyPond's
+          # bundle ships its own python that would otherwise shadow it on PATH
+          # (and lacks our deps → ModuleNotFoundError: jinja2).
+          PYBIN=$(command -v python)
           # PATH, not absolute paths: the compile shell-escapes gregorio and
           # repstopdf, and repstopdf needs gs (LilyPond's, in libexec).
           export PATH="$TLBIN:$LPBIN:$LPBIN/../libexec:$PATH"
           which lualatex gregorio lilypond gs || true
           # 1. full pipeline (gabc + ly + image + text) to PDF
-          ATELIER_SLOW_TESTS=1 python -m unittest tests.test_exporter.TestExportCompile -v
+          ATELIER_SLOW_TESTS=1 "$PYBIN" -m unittest tests.test_exporter.TestExportCompile -v
           # 2. TeX-side: both bundled families compile clean of font-not-found
-          python tests/ci/compile_font_check.py
+          "$PYBIN" tests/ci/compile_font_check.py
           # 3. Pango-side: both families visible to the engraver
-          python tests/ci/lilypond_font_check.py
+          "$PYBIN" tests/ci/lilypond_font_check.py
 
       - name: Compile real projects + verify bundled fonts (Windows)
         if: runner.os == 'Windows'
@@ -220,19 +238,23 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          # Resolve setup-python BEFORE prepending the toolchain: LilyPond's
+          # bundled python.exe would otherwise shadow it on PATH (and lacks our
+          # deps → ModuleNotFoundError: jinja2).
+          $py = "$env:pythonLocation\python.exe"
           # gs on Windows comes from tlgs.windows (in TLBIN), already on PATH.
           $env:PATH = "$env:TLBIN;$env:LPBIN;$env:PATH"
           $env:ATELIER_SLOW_TESTS = '1'
-          python -m unittest tests.test_exporter.TestExportCompile -v
+          & $py -m unittest tests.test_exporter.TestExportCompile -v
           if ($LASTEXITCODE -ne 0) { throw "full-pipeline compile failed ($LASTEXITCODE)" }
-          python tests/ci/compile_font_check.py
+          & $py tests/ci/compile_font_check.py
           if ($LASTEXITCODE -ne 0) { throw "TeX-side font check failed ($LASTEXITCODE)" }
-          python tests/ci/lilypond_font_check.py
+          & $py tests/ci/lilypond_font_check.py
           if ($LASTEXITCODE -ne 0) { throw "Pango-side font check failed ($LASTEXITCODE)" }
 
       - name: Upload compiled PDFs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: compile-output-${{ matrix.platform }}
           if-no-files-found: ignore
