@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.1 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="3.1">
+  <work><work-title>Le temps des cerises</work-title></work>
+  <identification>
+    <creator type="composer">A. Renard</creator>
+    <encoding><software>Harmony Assistant</software><encoding-date>2026-07-01</encoding-date></encoding>
+  </identification>
+  <credit page="1"><credit-words>Page 1 sur 2</credit-words></credit>
+  <credit page="1"><credit-words>01/07/2026 14:23</credit-words></credit>
+  <part-list>
+    <score-part id="P1"><part-name>Voix</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>2</divisions>
+        <key><fifths>0</fifths></key>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <note>
+        <pitch><step>C</step><octave>4</octave></pitch>
+        <duration>2</duration><type>quarter</type>
+        <lyric number="1"><syllabic>begin</syllabic><text>
+Quand</text></lyric>
+      </note>
+      <note>
+        <pitch><step>D</step><octave>4</octave></pitch>
+        <duration>2</duration><type>quarter</type>
+        <lyric number="1"><syllabic>end</syllabic><text>nous</text></lyric>
+      </note>
+      <note>
+        <pitch><step>E</step><octave>4</octave></pitch>
+        <duration>4</duration><type>half</type>
+        <lyric number="1"><syllabic>single</syllabic><text>chan</text></lyric>
+      </note>
+    </measure>
+  </part>
+</score-partwise>

@@ -1,0 +1,241 @@
+name: CI
+
+# Cross-platform checks that don't need the full build/packaging pipeline
+# (that lives in release.yml). Three jobs run on Linux + macOS + Windows so
+# every assertion verified locally is re-verified on each OS:
+#   1. unit-tests — the Python suite; pure logic, incl. the fontconfig config
+#      generation (path handling differs per OS: WINDIR, separators, …);
+#   2. lilypond-font-smoke — fast: proves both bundled families are visible to
+#      the LilyPond/Pango engraver on each OS (the Windows case in particular,
+#      no /etc/fonts to inherit);
+#   3. compile — heavy: provisions the full TeX + gregorio + LilyPond toolchain
+#      (same tlmgr + relocatable-archive recipe as spike-measure-tex-size.yml)
+#      and actually compiles real projects, proving the PDF build AND the
+#      luaotfload (TeX-side) resolution of both bundled families per OS.
+# See tests/ci/ for the check scripts.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    name: Unit tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      # Tests import the app modules directly (tests/base.py puts app/ on the
+      # path); they need only flask + jinja2 (velopack is imported lazily, only
+      # in the packaged app), so install those rather than build the package.
+      - name: Install runtime dependencies
+        run: pip install flask jinja2
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -t . -v
+
+  lilypond-font-smoke:
+    name: LilyPond sees bundled font (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install LilyPond (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y lilypond
+
+      - name: Install LilyPond (macOS)
+        if: runner.os == 'macOS'
+        run: brew install lilypond
+
+      - name: Install LilyPond (Windows)
+        if: runner.os == 'Windows'
+        run: choco install lilypond -y --no-progress
+
+      # choco puts the shim on PATH but the current step's PATH may be stale;
+      # refresh it for the check step by re-exporting from the machine PATH.
+      - name: Refresh PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+          $user = [Environment]::GetEnvironmentVariable('Path', 'User')
+          "$machine;$user" -split ';' | Where-Object { $_ } | Sort-Object -Unique |
+            ForEach-Object { Add-Content -Path $env:GITHUB_PATH -Value $_ }
+
+      - name: LilyPond resolves the bundled fonts
+        run: python tests/ci/lilypond_font_check.py
+
+  # ── Heavy: full toolchain, real compiles. Mirrors the provisioning proven
+  #    by spike-measure-tex-size.yml (pinned CTAN mirror, the TL_PACKAGES the
+  #    lyluatex+gregorio compile actually needs, install-tl.zip on Windows,
+  #    gs via LilyPond's libexec on mac/linux + tlgs.windows on Windows). The
+  #    first run on a new OS may surface a missing TeX package — add it to
+  #    TL_PACKAGES and re-run, exactly as the spike did.
+  compile:
+    name: Compile + TeX-side fonts (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15-intel
+            platform: macos
+            lilypond_arch: darwin-x86_64
+          - os: windows-latest
+            platform: windows
+            lilypond_arch: mingw-x86_64
+          - os: ubuntu-latest
+            platform: linux
+            lilypond_arch: linux-x86_64
+    env:
+      CTAN_REPO: https://tlnet.yihui.org
+      # spike's proven lyluatex+gregorio set, plus the extra packages the app's
+      # own template preamble loads (adjustbox+deps, geometry, multicol=tools).
+      TL_PACKAGES: luatex latex-bin latex graphics gregoriotex fontspec xcolor kvoptions luacolor luatexbase luamplib xstring luacode lyluatex minibox environ currfile filehook pdfpages luaoptions xkeyval metalogo adjustbox collectbox trimclip varwidth ifoddpage geometry tools
+      LILYPOND_VERSION: 2.26.0
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install Python dependencies
+        run: pip install flask jinja2
+
+      - name: Install minimal TeX Live scheme (macOS/Linux)
+        if: runner.os != 'Windows'
+        timeout-minutes: 30
+        shell: bash
+        run: |
+          set -e
+          curl -sL --retry 10 --retry-delay 30 "$CTAN_REPO/install-tl-unx.tar.gz" -o install-tl.tar.gz
+          mkdir install-tl && tar -xzf install-tl.tar.gz -C install-tl --strip-components=1
+          cat > profile.txt <<'EOF'
+          selected_scheme scheme-basic
+          TEXDIR ./texlive-min
+          TEXMFLOCAL ./texlive-min/texmf-local
+          TEXMFSYSVAR ./texlive-min/texmf-var
+          TEXMFSYSCONFIG ./texlive-min/texmf-config
+          TEXMFVAR ./texlive-min/texmf-var-user
+          TEXMFCONFIG ./texlive-min/texmf-config-user
+          TEXMFHOME ./texlive-min/texmf-home
+          instopt_adjustpath 0
+          instopt_adjustrepo 0
+          tlpdbopt_autobackup 0
+          tlpdbopt_install_docfiles 0
+          tlpdbopt_install_srcfiles 0
+          EOF
+          ./install-tl/install-tl -profile profile.txt -repository "$CTAN_REPO"
+          TLBIN=$(find "$PWD/texlive-min/bin" -maxdepth 1 -mindepth 1 -type d | head -1)
+          echo "TLBIN=$TLBIN" >> "$GITHUB_ENV"
+          "$TLBIN/tlmgr" --repository "$CTAN_REPO" install $TL_PACKAGES
+
+      - name: Install minimal TeX Live scheme (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 30
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Invoke-WebRequest -Uri "$env:CTAN_REPO/install-tl.zip" -OutFile install-tl.zip -TimeoutSec 600
+          Expand-Archive install-tl.zip -DestinationPath .
+          $tlroot = Get-ChildItem -Directory -Filter 'install-tl-*' | Select-Object -First 1
+          $tlprofile = @"
+          selected_scheme scheme-basic
+          TEXDIR ./texlive-min
+          TEXMFLOCAL ./texlive-min/texmf-local
+          TEXMFSYSVAR ./texlive-min/texmf-var
+          TEXMFSYSCONFIG ./texlive-min/texmf-config
+          TEXMFVAR ./texlive-min/texmf-var-user
+          TEXMFCONFIG ./texlive-min/texmf-config-user
+          TEXMFHOME ./texlive-min/texmf-home
+          instopt_adjustpath 0
+          instopt_adjustrepo 0
+          tlpdbopt_autobackup 0
+          tlpdbopt_install_docfiles 0
+          tlpdbopt_install_srcfiles 0
+          "@
+          Set-Content -Path profile.txt -Value $tlprofile
+          & "$($tlroot.FullName)\install-tl-windows.bat" -no-gui -profile profile.txt -repository $env:CTAN_REPO
+          if ($LASTEXITCODE -ne 0) { throw "install-tl failed ($LASTEXITCODE)" }
+          $tlbin = Get-ChildItem -Path ".\texlive-min\bin" -Directory | Select-Object -First 1
+          & "$($tlbin.FullName)\tlmgr.bat" --repository $env:CTAN_REPO install ($env:TL_PACKAGES.Split(' ') + 'tlgs.windows')
+          if ($LASTEXITCODE -ne 0) { throw "tlmgr install failed ($LASTEXITCODE)" }
+          "TLBIN=$($tlbin.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Install Lilypond (macOS/Linux)
+        if: runner.os != 'Windows'
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          set -e
+          curl -sL --retry 10 --retry-delay 30 -o lilypond.tar.gz \
+            "https://gitlab.com/lilypond/lilypond/-/releases/v${LILYPOND_VERSION}/downloads/lilypond-${LILYPOND_VERSION}-${{ matrix.lilypond_arch }}.tar.gz"
+          tar -xzf lilypond.tar.gz
+          echo "LPBIN=$PWD/lilypond-${LILYPOND_VERSION}/bin" >> "$GITHUB_ENV"
+
+      - name: Install Lilypond (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 15
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Invoke-WebRequest -TimeoutSec 600 -OutFile lilypond.zip -Uri `
+            "https://gitlab.com/lilypond/lilypond/-/releases/v$env:LILYPOND_VERSION/downloads/lilypond-$env:LILYPOND_VERSION-${{ matrix.lilypond_arch }}.zip"
+          Expand-Archive lilypond.zip -DestinationPath .
+          "LPBIN=$PWD\lilypond-$env:LILYPOND_VERSION\bin" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Compile real projects + verify bundled fonts (macOS/Linux)
+        if: runner.os != 'Windows'
+        timeout-minutes: 20
+        shell: bash
+        run: |
+          set -eo pipefail
+          # PATH, not absolute paths: the compile shell-escapes gregorio and
+          # repstopdf, and repstopdf needs gs (LilyPond's, in libexec).
+          export PATH="$TLBIN:$LPBIN:$LPBIN/../libexec:$PATH"
+          which lualatex gregorio lilypond gs || true
+          # 1. full pipeline (gabc + ly + image + text) to PDF
+          ATELIER_SLOW_TESTS=1 python -m unittest tests.test_exporter.TestExportCompile -v
+          # 2. TeX-side: both bundled families compile clean of font-not-found
+          python tests/ci/compile_font_check.py
+          # 3. Pango-side: both families visible to the engraver
+          python tests/ci/lilypond_font_check.py
+
+      - name: Compile real projects + verify bundled fonts (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 20
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # gs on Windows comes from tlgs.windows (in TLBIN), already on PATH.
+          $env:PATH = "$env:TLBIN;$env:LPBIN;$env:PATH"
+          $env:ATELIER_SLOW_TESTS = '1'
+          python -m unittest tests.test_exporter.TestExportCompile -v
+          if ($LASTEXITCODE -ne 0) { throw "full-pipeline compile failed ($LASTEXITCODE)" }
+          python tests/ci/compile_font_check.py
+          if ($LASTEXITCODE -ne 0) { throw "TeX-side font check failed ($LASTEXITCODE)" }
+          python tests/ci/lilypond_font_check.py
+          if ($LASTEXITCODE -ne 0) { throw "Pango-side font check failed ($LASTEXITCODE)" }
+
+      - name: Upload compiled PDFs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compile-output-${{ matrix.platform }}
+          if-no-files-found: ignore
+          path: |
+            **/suite.pdf
+            **/p.pdf

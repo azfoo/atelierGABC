@@ -2,8 +2,13 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<title>Atelier GABC</title>
+<title>Atelier Liturgique</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/latexjs/css/base.css">
+<link rel="stylesheet" href="/latexjs/css/article.css">
 <link rel="stylesheet" href="/codemirror.min.css">
+<script src="/latexjs/latex.js"></script>
+<script src="/codemirror.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -19,62 +24,32 @@ body {
 }
 
 /* ── Scrollbars ── */
-/* Dark areas: sidebar, log */
-#sidebar, #log-output {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.18) transparent;
-}
-#sidebar::-webkit-scrollbar,
-#log-output::-webkit-scrollbar { width: 5px; }
-#sidebar::-webkit-scrollbar-track,
-#log-output::-webkit-scrollbar-track { background: transparent; }
-#sidebar::-webkit-scrollbar-thumb,
-#log-output::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.18); border-radius: 3px;
-}
-#sidebar::-webkit-scrollbar-thumb:hover,
-#log-output::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.32); }
-
-/* Light areas: preview, CodeMirror */
-#preview, #cm-wrap .CodeMirror-scroll {
+#item-list, #log-output {
   scrollbar-width: thin;
   scrollbar-color: rgba(0,0,0,0.18) transparent;
 }
-#preview::-webkit-scrollbar,
-#cm-wrap .CodeMirror-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
-#preview::-webkit-scrollbar-track,
-#cm-wrap .CodeMirror-scroll::-webkit-scrollbar-track { background: transparent; }
-#preview::-webkit-scrollbar-thumb,
-#cm-wrap .CodeMirror-scroll::-webkit-scrollbar-thumb {
+#item-list::-webkit-scrollbar, #log-output::-webkit-scrollbar { width: 6px; }
+#item-list::-webkit-scrollbar-track, #log-output::-webkit-scrollbar-track { background: transparent; }
+#item-list::-webkit-scrollbar-thumb, #log-output::-webkit-scrollbar-thumb {
   background: rgba(0,0,0,0.18); border-radius: 3px;
 }
-#preview::-webkit-scrollbar-thumb:hover,
-#cm-wrap .CodeMirror-scroll::-webkit-scrollbar-thumb:hover { background: rgba(139,69,19,0.5); }
+#item-list::-webkit-scrollbar-thumb:hover, #log-output::-webkit-scrollbar-thumb:hover { background: rgba(139,69,19,0.4); }
 
-/* ── Setup screen ── */
+/* ── Setup / no-project screen ── */
 #setup {
-  max-width: 500px;
-  margin: 5em auto;
-  padding: 2em 2.2em;
+  max-width: 480px;
+  margin: 6em auto;
+  padding: 2.2em 2.4em;
   background: #fff;
   border: 1px solid #ddd;
   border-radius: 6px;
   box-shadow: 0 4px 24px rgba(0,0,0,0.1);
+  text-align: center;
 }
 #setup h1 { font-size: 1.6em; font-weight: 600; margin-bottom: 0.15em; letter-spacing: 0.04em; }
 #setup .tagline { color: #888; font-style: italic; margin-bottom: 1.8em; font-size: 0.9em; }
-.field { margin-bottom: 1.1em; }
-.field label { display: block; font-size: 0.82em; color: #666; margin-bottom: 0.3em; font-family: Georgia, serif; }
-.browse-row { display: flex; gap: 0.4em; }
-.browse-row input { flex: 1; }
-input[type=text] {
-  width: 100%; padding: 0.38em 0.6em;
-  border: 1px solid #ccc; border-radius: 3px;
-  font-family: Georgia, serif; font-size: 0.92em;
-  background: #fafafa; color: #2a2218;
-}
-input[type=text]:focus { outline: none; border-color: #8b4513; background: #fff; }
-.field-hint { font-size: 0.76em; color: #aaa; margin-top: 0.25em; }
+#setup .setup-actions { display: flex; gap: 0.8em; justify-content: center; }
+
 .btn {
   padding: 0.35em 0.85em;
   font-family: Georgia, serif; font-size: 0.85em;
@@ -86,8 +61,8 @@ input[type=text]:focus { outline: none; border-color: #8b4513; background: #fff;
 .btn-primary { background: #8b4513; color: #fff; border-color: #8b4513; }
 .btn-primary:hover { background: #a0521a; border-color: #a0521a; }
 .btn-sm { padding: 0.25em 0.6em; font-size: 0.8em; }
-.setup-actions { margin-top: 1.6em; display: flex; gap: 0.6em; align-items: center; }
-.setup-note { font-size: 0.76em; color: #aaa; }
+.btn-danger { color: #a33; }
+.field-hint { font-size: 0.76em; color: #aaa; margin-top: 0.25em; }
 
 /* ── Main app shell ── */
 #app { display: none; flex-direction: column; height: 100vh; min-height: 0; }
@@ -103,7 +78,10 @@ header h1 { font-size: 0.92em; font-weight: 400; letter-spacing: 0.1em; flex-shr
 #file-label {
   font-size: 0.78em; color: rgba(255,255,255,0.6);
   flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  cursor: pointer; background: none; border: none; text-align: left;
+  font-family: Georgia, serif;
 }
+#file-label:hover { color: rgba(255,255,255,0.9); }
 header button {
   padding: 0.28em 0.75em;
   font-family: Georgia, serif; font-size: 0.78em;
@@ -117,137 +95,206 @@ header button.primary { background: #8b4513; border-color: #8b4513; }
 header button.primary:hover { background: #a0521a; }
 header button:disabled { opacity: 0.32; cursor: not-allowed; }
 
-/* ── Body: sidebar + editor ── */
-#body { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+/* ── Item list body ── */
+#body { flex: 1; overflow: hidden; min-height: 0; display: flex; flex-direction: column; }
+#content-row { flex: 1; overflow: hidden; min-height: 0; display: flex; flex-direction: row; }
+#item-list { flex: 1; overflow-y: auto; padding: 1.4em 2em 2em; max-width: 760px; margin: 0 auto; width: 100%; }
+#item-list-empty { color: #aaa; font-style: italic; text-align: center; margin-top: 3em; }
 
-/* ── Sidebar / file tree ── */
-#sidebar {
-  width: 230px; flex-shrink: 0;
-  background: #221d16;
-  overflow-y: auto;
+/* ── Edit panel (left side, only open while editing a text item) ── */
+#edit-panel {
+  width: 0; flex-shrink: 0; overflow: hidden;
+  background: #221d16; color: #f8f6f0;
   display: flex; flex-direction: column;
+  transition: width 0.15s;
+}
+#edit-panel.open { width: 320px; }
+#edit-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.6em 0.9em; flex-shrink: 0;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  font-size: 0.78em; color: rgba(255,255,255,0.55);
+  white-space: nowrap;
+}
+#edit-panel-header button {
+  border: none; background: none; color: rgba(255,255,255,0.5);
+  cursor: pointer; font-size: 1.1em; padding: 0 0.3em;
+}
+#edit-panel-header button:hover { color: #fff; }
+#edit-panel-body {
+  flex: 1; overflow-y: auto; padding: 0.9em 1em;
+  min-width: 280px; /* avoid reflow squeeze while the panel is animating open */
+}
+.edit-field { margin-bottom: 1em; }
+.edit-field-label {
+  font-size: 0.7em; text-transform: uppercase; letter-spacing: 0.08em;
+  color: rgba(255,255,255,0.4); margin-bottom: 0.3em;
+}
+.edit-field-box {
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.13);
+  border-radius: 3px; padding: 0.5em 0.6em; outline: none;
+  line-height: 1.5; font-size: 0.95em; min-height: 1.4em;
+}
+.edit-field-box:focus { border-color: #8b4513; background: rgba(255,255,255,0.1); }
+.item-preview-editable { cursor: pointer; }
+.item-preview-editable:hover { outline: 2px dashed #d8b48a; outline-offset: -2px; }
+.item-preview-editing { outline: 2px solid #8b4513; outline-offset: 2px; }
+
+.item-card {
+  background: #fff; border: 1px solid #e5e0d6; border-radius: 5px;
+  margin-bottom: 0.9em; overflow: hidden;
+  transition: box-shadow 0.12s;
+  position: relative;
+  /* Guarantees room for the corner badge (top: 0.3em + its own ~1.6em)
+     even when content is very short/empty — otherwise overflow:hidden
+     clips the bottom of the badge on a near-empty text field. */
+  min-height: 2.6em;
+  /* Flex column so the preview/file-body content stretches to fill that
+     min-height, rather than leaving a gap between a short inner box and
+     the card's actual (taller) bounds — otherwise the preview's hover
+     outline only wraps the short content, visibly not matching the card. */
+  display: flex;
+  flex-direction: column;
+}
+.item-card.dragging { opacity: 0.4; }
+.item-card.drop-target { border-color: #8b4513; box-shadow: 0 0 0 2px rgba(139,69,19,0.25); }
+
+/* Hidden until hover, so the resting page reads like the actual document
+   rather than an editor — a small corner-anchored cluster, sized to its
+   own content (not stretched to the card's full height), so it can never
+   need more room than a short card has to give it. An earlier version
+   spanned the full card height with vertical centering, which on a short
+   card (e.g. a one-line title) overflowed and got clipped by the card's
+   `overflow: hidden`, silently hiding everything but the middle button. */
+.item-side-bar {
+  position: absolute; top: 0.3em; right: 0.3em; z-index: 5;
+  display: flex; flex-direction: row; align-items: center; gap: 0.3em;
+  background: rgba(245,242,237,0.95);
+  border: 1px solid #e5e0d6; border-radius: 4px;
+  padding: 0.15em 0.3em;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.12s;
+}
+.item-card:hover .item-side-bar, .item-card:focus-within .item-side-bar {
+  opacity: 1; pointer-events: auto;
+}
+.item-side-bar button {
+  border: none; background: none; cursor: pointer;
+  color: #999; font-size: 0.95em; padding: 0.2em;
+  line-height: 1;
+}
+.item-side-bar button:hover { color: #444; }
+.item-side-bar .item-delete-btn:hover { color: #a33; }
+.item-drag-handle { cursor: grab; }
+#edit-panel-style-select {
+  font-family: Georgia, serif; font-size: 0.85em;
+  padding: 0.3em 0.4em; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px;
+  background: rgba(255,255,255,0.08); color: #f8f6f0; width: 100%;
+}
+.item-text-preview {
+  flex: 1; padding: 0.7em 1.1em; background: #fafaf7; overflow-x: auto;
+}
+.item-text-preview .body { font-family: 'Computer Modern Serif', Georgia, serif; }
+.item-preview-error { color: #bbb; font-style: italic; font-size: 0.82em; font-family: Georgia, serif; }
+
+.item-file-body { flex: 1; padding: 0.7em 1.1em; display: flex; flex-direction: column; gap: 0.5em; }
+.item-file-row { display: flex; align-items: center; gap: 0.6em; }
+.item-file-path {
+  flex: 1; font-family: 'Consolas', 'Menlo', monospace; font-size: 0.82em;
+  color: #555; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.item-file-path.empty { color: #bbb; font-style: italic; font-family: Georgia, serif; }
+.item-missing-badge {
+  font-size: 0.72em; color: #a33; background: #fbe8e8; border: 1px solid #e8c0c0;
+  border-radius: 3px; padding: 0.1em 0.5em; flex-shrink: 0;
+}
+.item-file-label { font-size: 0.74em; color: #999; width: 6.5em; flex-shrink: 0; }
+
+.add-item-bar {
+  display: flex; gap: 0.5em; justify-content: center; margin-top: 0.5em;
 }
 
-/* ── Resizer handles ── */
-.resizer-x {
-  width: 4px; flex-shrink: 0; cursor: col-resize;
-  background: #151210; transition: background 0.15s;
-}
-.resizer-x:hover, .resizer-x.dragging { background: #8b4513; }
-.resizer-y {
-  height: 4px; flex-shrink: 0; cursor: row-resize;
-  background: #e0dbd0; transition: background 0.15s;
-}
-.resizer-y:hover, .resizer-y.dragging { background: #8b4513; }
-#sidebar-header {
-  padding: 0; flex-shrink: 0;
-  display: flex; align-items: center;
-}
-#folder-link {
-  display: flex; align-items: center;
-  flex: 1; padding: 0.5em 0.4em 0.5em 0.8em;
-  background: none; border: none; cursor: pointer;
-  font-size: 0.68em; color: rgba(255,255,255,0.38);
-  text-align: left; font-family: Georgia, serif;
-  letter-spacing: 0.04em;
-  transition: color 0.12s;
-  overflow: hidden; min-width: 0;
-}
-#folder-link:hover { color: rgba(255,255,255,0.75); }
-#folder-label {
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-#btn-new-file {
-  flex-shrink: 0; padding: 0.3em 0.55em;
-  background: none; border: none; cursor: pointer;
-  font-size: 1em; color: rgba(255,255,255,0.32);
-  line-height: 1; transition: color 0.12s;
-  font-family: Georgia, serif;
-}
-#btn-new-file:hover { color: rgba(255,255,255,0.8); }
-#tree { flex: 1; overflow-y: auto; }
-#sidebar-footer {
-  padding: 0.45em 0.6em;
-  border-top: 1px solid rgba(255,255,255,0.07);
-  flex-shrink: 0;
-}
-#btn-export-all {
-  width: 100%;
-  padding: 0.28em 0.6em;
-  font-family: Georgia, serif; font-size: 0.78em;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.13);
-  color: rgba(255,255,255,0.52);
-  cursor: pointer; border-radius: 3px; text-align: center;
-  transition: background 0.12s, color 0.12s;
-}
-#btn-export-all:hover { background: rgba(255,255,255,0.11); color: rgba(255,255,255,0.85); }
-#btn-export-all:disabled { opacity: 0.35; cursor: not-allowed; }
-.tree-folder {
-  display: flex; align-items: center; gap: 0.4em;
-  padding: 0.32em 0.8em 0.2em;
-  color: rgba(255,255,255,0.42);
-  font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.1em;
-  cursor: pointer; user-select: none;
-  font-family: Georgia, serif;
-}
-.tree-folder:hover { color: rgba(255,255,255,0.7); }
-.tree-arrow { font-style: normal; display: inline-block; width: 0.9em; transition: transform 0.15s; }
-.tree-arrow.open { transform: rotate(90deg); }
-.tree-children { overflow: hidden; padding-left: 0.9em; }
-.tree-item {
-  display: flex; align-items: center; gap: 0.4em;
-  padding: 0.3em 0.5em 0.3em 1.6em;
-  color: rgba(255,255,255,0.68);
-  font-size: 0.82em; cursor: pointer; min-width: 0;
-}
-.tree-item:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.9); }
-.tree-item.active { background: #8b4513; color: #fff; }
-.tree-item.dragging { opacity: 0.35; }
-.tree-folder.drop-target { background: rgba(139,69,19,0.35); color: rgba(255,255,255,0.95); border-radius: 3px; }
-.tree-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.tree-pdf-btn {
-  flex-shrink: 0; font-family: 'Consolas', 'Menlo', monospace;
-  font-size: 0.66em; letter-spacing: 0.04em;
-  color: rgba(255,255,255,0.3);
-  padding: 0.1em 0.38em; border-radius: 2px;
-  border: 1px solid rgba(255,255,255,0.13);
-  transition: color 0.12s, border-color 0.12s, background 0.12s;
-}
-.tree-item:hover .tree-pdf-btn { color: rgba(255,255,255,0.5); border-color: rgba(255,255,255,0.22); }
-.tree-pdf-btn:hover { color: #e8b88a !important; border-color: rgba(139,69,19,0.7) !important; background: rgba(139,69,19,0.22) !important; }
-.tree-item.active .tree-pdf-btn { color: rgba(255,255,255,0.6); border-color: rgba(255,255,255,0.35); }
-.tree-icon { font-style: normal; opacity: 0.5; flex-shrink: 0; }
-
-/* ── Editor area ── */
-#editor-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; min-height: 0; }
-
-/* ── Exsurge preview ── */
-#preview {
-  background: #fff;
-  border-bottom: 1px solid #e0dbd0;
-  padding: 0.8em 1.2em;
+/* ── GABC preview on item cards (exsurge, rendered in the worker) ── */
+.item-gabc-preview {
+  padding: 0.5em 0.9em 0.6em; cursor: pointer;
   overflow-x: auto;
-  flex-shrink: 0;
-  min-height: 60px;
-  max-height: 38vh;
-  overflow-y: auto;
 }
-#preview svg { max-width: 100%; height: auto; display: block; overflow: visible; }
-.chant-stave { margin-bottom: 2px; }
-.chant-stave svg { max-width: 100%; height: auto; display: block; overflow: visible; }
-.preview-placeholder { color: #bbb; font-style: italic; font-size: 0.88em; line-height: 2.5; }
-.gabc-fallback { font-family: monospace; font-size: 0.75em; color: #888; white-space: pre-wrap; }
+.item-gabc-preview svg { max-width: 100%; height: auto; }
+.item-gabc-preview .preview-placeholder {
+  color: #bbb; font-style: italic; font-size: 0.82em;
+}
+.item-gabc-preview.item-preview-editing { outline: 2px solid #c9a227; outline-offset: -2px; }
 
-/* ── CodeMirror wrapper ── */
-#cm-wrap { flex: 1; overflow: hidden; }
-#cm-wrap .CodeMirror {
-  height: 100%; font-size: 13px; line-height: 1.5;
-  font-family: 'Consolas', 'Menlo', monospace;
-  background: #fafaf7; color: #2a2218;
-  border: none;
+/* ── Lilypond PNG preview on polyphony cards (server-side compile) ── */
+.item-ly-preview {
+  padding: 0.5em 0.9em 0.6em; cursor: pointer;
+  overflow-x: auto;
 }
-#cm-wrap .CodeMirror-scroll { overflow: auto !important; }
+.item-ly-preview img { max-width: 100%; height: auto; display: block; }
+.item-ly-preview .preview-placeholder {
+  color: #bbb; font-style: italic; font-size: 0.82em;
+}
+.item-ly-preview.item-preview-editing { outline: 2px solid #c9a227; outline-offset: -2px; }
+
+/* Stale-derived-file hint (source_path newer than file_path) — a warning
+   tint, deliberately distinct from the red missing-file badge: the item
+   still exports fine, it just might not reflect the latest source. */
+.item-stale-badge {
+  font-size: 0.72em; color: #8a5a00; background: #fdf3dd; border: 1px solid #ecd9a8;
+  border-radius: 3px; padding: 0.1em 0.5em; flex-shrink: 0;
+}
+
+/* ── Image preview on image cards (PNG/JPEG raw, PDF rasterised by gs) ── */
+.item-image-preview {
+  padding: 0.5em 0.9em 0.6em; cursor: pointer; text-align: center;
+}
+.item-image-preview img {
+  max-width: 100%; height: auto; display: inline-block;
+  border: 1px solid #eee; background: #fff;
+}
+.item-image-preview .preview-placeholder { color: #bbb; font-style: italic; font-size: 0.82em; }
+.item-image-preview.item-preview-editing { outline: 2px solid #c9a227; outline-offset: -2px; }
+
+/* ── Image edit panel: width slider + drag-to-crop over a live preview ── */
+.edit-image-frame {
+  position: relative; display: inline-block; max-width: 100%;
+  margin: 0 auto; line-height: 0; user-select: none; touch-action: none;
+}
+.edit-image-frame img { max-width: 100%; height: auto; display: block; }
+/* The four shaded bands are the trimmed-away margins (left/top/right/bottom
+   as fractions), so what stays bright is exactly what the PDF will keep. */
+.edit-crop-shade { position: absolute; background: rgba(20,16,10,0.5); pointer-events: none; }
+.edit-crop-shade.left   { top: 0; bottom: 0; left: 0; }
+.edit-crop-shade.right  { top: 0; bottom: 0; right: 0; }
+.edit-crop-shade.top    { left: 0; right: 0; top: 0; }
+.edit-crop-shade.bottom { left: 0; right: 0; bottom: 0; }
+/* Draggable edge handles, one per side, sitting on the kept-region border. */
+.edit-crop-handle { position: absolute; background: #c9a227; }
+.edit-crop-handle.left, .edit-crop-handle.right { top: 0; bottom: 0; width: 6px; margin-left: -3px; cursor: ew-resize; }
+.edit-crop-handle.top, .edit-crop-handle.bottom { left: 0; right: 0; height: 6px; margin-top: -3px; cursor: ns-resize; }
+.edit-image-wm { text-align: center; }
+.edit-dpi-hint {
+  margin-top: 0.5em; font-size: 0.76em; line-height: 1.35;
+  color: #8a5a00; background: #fdf3dd; border: 1px solid #ecd9a8;
+  border-radius: 3px; padding: 0.4em 0.6em;
+}
+
+/* ── CodeMirror inside the edit panel (gabc/ly source) ── */
+#edit-panel .CodeMirror {
+  height: auto; min-height: 12em; max-height: 46vh;
+  border: 1px solid #ddd; border-radius: 3px;
+  font-family: 'Consolas', 'Menlo', monospace; font-size: 12px; line-height: 1.5;
+  background: #fafaf7;
+}
+#edit-panel .CodeMirror-scroll { max-height: 46vh; }
+.edit-file-path {
+  font-family: 'Consolas', 'Menlo', monospace; font-size: 0.72em; color: #999;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  margin-bottom: 0.5em;
+}
+.edit-file-actions { display: flex; gap: 0.5em; align-items: center; margin-top: 0.6em; }
+.edit-file-status { font-size: 0.76em; color: #999; flex: 1; }
+.edit-file-status.dirty { color: #b3402a; }
 
 /* ── Log panel ── */
 #log-panel {
@@ -274,6 +321,7 @@ header button:disabled { opacity: 0.32; cursor: not-allowed; }
 .log-ok { color: #7aad5f; }
 .log-err { color: #e57373; }
 .log-spin { color: #c9a227; }
+.log-warn { color: #e0a45e; }
 
 /* ── Update banner ── */
 #update-banner {
@@ -298,78 +346,130 @@ header button:disabled { opacity: 0.32; cursor: not-allowed; }
 }
 #update-banner .dismiss:hover { opacity: 1; }
 
-/* ── Modals (settings + help) ── */
-#settings-modal, #help-modal {
+/* ── Font preflight banner (a referenced family this machine can't load) ── */
+#font-banner {
+  display: none; align-items: center; gap: 0.8em;
+  padding: 0.35em 1em; flex-shrink: 0;
+  background: #8a5a12; color: #fff;
+  font-size: 0.8em; font-family: Georgia, serif;
+}
+#font-banner.visible { display: flex; }
+#font-banner #font-banner-msg { flex: 1; }
+#font-banner button {
+  padding: 0.2em 0.7em;
+  font-family: Georgia, serif; font-size: 0.85em;
+  border: 1px solid rgba(255,255,255,0.45);
+  background: rgba(255,255,255,0.15); color: #fff;
+  cursor: pointer; border-radius: 3px;
+}
+#font-banner button:hover { background: rgba(255,255,255,0.28); }
+#font-banner .dismiss { border-color: transparent; opacity: 0.85; }
+
+/* ── Modals (settings + help + defs + relink) ── */
+#settings-modal, #help-modal, #defs-modal, #relink-modal {
   display: none; position: fixed; inset: 0;
   background: rgba(0,0,0,0.55); z-index: 200;
   align-items: center; justify-content: center;
 }
-#settings-modal.open, #help-modal.open { display: flex; }
-#help-modal .modal { width: 540px; max-height: 82vh; overflow-y: auto; }
+#settings-modal.open, #help-modal.open, #defs-modal.open, #relink-modal.open { display: flex; }
+
+.checkbox-row {
+  display: flex; align-items: baseline; gap: 0.5em;
+  font-size: 0.85em; color: #444; line-height: 1.45; cursor: pointer;
+}
+
+/* ── Relink modal (missing linked files at load) ── */
+#relink-modal .modal { width: min(640px, 94vw); max-height: 82vh; display: flex; flex-direction: column; }
+#relink-list { overflow-y: auto; flex: 1; }
+.relink-row {
+  display: flex; align-items: center; gap: 0.6em;
+  padding: 0.55em 0.2em; border-bottom: 1px solid #eee6da;
+}
+.relink-row-label { font-size: 0.78em; color: #999; width: 9.5em; flex-shrink: 0; }
+.relink-row-path {
+  flex: 1; font-family: 'Consolas', 'Menlo', monospace; font-size: 0.78em;
+  color: #a33; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  direction: rtl; text-align: left; /* ellipsis on the left — the filename end matters most */
+}
+.relink-row-done { font-size: 0.8em; color: #4a7a3a; flex-shrink: 0; }
+
+/* ── Defs editor (page geometry + named styles) ── */
+#defs-modal .modal {
+  width: min(760px, 94vw); max-height: 90vh;
+  display: flex; flex-direction: column;
+}
+#defs-body { overflow-y: auto; flex: 1; padding-right: 0.3em; }
+.defs-section-title {
+  font-size: 0.8em; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: #8b4513;
+  margin: 1.3em 0 0.6em; padding-bottom: 0.25em;
+  border-bottom: 1px solid #eee6da;
+}
+.defs-section-title:first-child { margin-top: 0; }
+.defs-hint { font-size: 0.76em; color: #999; margin: -0.3em 0 0.7em; line-height: 1.5; }
+.style-row {
+  border: 1px solid #e5ddd0; border-radius: 4px;
+  padding: 0.7em 0.8em; margin-bottom: 0.8em; background: #fdfcf9;
+}
+.style-row-head { display: flex; gap: 0.5em; align-items: center; margin-bottom: 0.45em; }
+.style-row-head input {
+  width: 11em; padding: 0.28em 0.5em; border: 1px solid #ccc; border-radius: 3px;
+  font-family: Georgia, serif; font-size: 0.9em; background: #fff; color: #2a2218;
+}
+.style-row-head input:focus { outline: none; border-color: #8b4513; }
+.style-usage { font-size: 0.74em; color: #999; flex: 1; }
+.style-body-input {
+  width: 100%; min-height: 3.2em; resize: vertical;
+  font-family: 'Consolas', 'Menlo', monospace; font-size: 11.5px; line-height: 1.5;
+  border: 1px solid #ddd; border-radius: 3px; padding: 0.45em 0.6em;
+  background: #fafaf7; color: #2a2218; white-space: pre; overflow-x: auto;
+}
+.style-body-input:focus { outline: none; border-color: #8b4513; background: #fff; }
+.style-issues {
+  display: none; margin-top: 0.4em; font-size: 0.76em; line-height: 1.5;
+  color: #b3402a; background: #fdf0ee; border-radius: 3px; padding: 0.35em 0.6em;
+  white-space: pre-wrap;
+}
+.style-issues.visible { display: block; }
+.style-preview {
+  margin-top: 0.45em; border: 1px dashed #ddd4c4; border-radius: 3px;
+  padding: 0.4em 0.7em; background: #fff; overflow: hidden;
+  font-size: 0.85em;
+}
+.style-preview .item-preview-error { color: #b3402a; font-size: 0.85em; font-style: italic; }
+#help-modal .modal { width: 560px; max-height: 82vh; overflow-y: auto; }
 .help-body { font-size: 0.88em; line-height: 1.65; color: #2a2218; }
 .help-body h3 { font-size: 0.92em; font-weight: 600; margin: 1.2em 0 0.35em; letter-spacing: 0.02em; }
 .help-body h3:first-child { margin-top: 0; }
 .help-body ol, .help-body ul { padding-left: 1.5em; margin: 0.3em 0 0.6em; }
 .help-body li { margin-bottom: 0.25em; }
-.help-body pre { background: #f4f2ee; padding: 0.65em 0.9em; border-radius: 3px; font-family: 'Consolas', 'Menlo', monospace; font-size: 0.82em; line-height: 1.55; margin: 0.5em 0 0.8em; white-space: pre; overflow-x: auto; }
 .help-body .kv { display: grid; grid-template-columns: max-content 1fr; gap: 0.25em 1.2em; margin: 0.3em 0 0.6em; }
 .help-body .kv kbd { font-family: 'Consolas', 'Menlo', monospace; font-size: 0.85em; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 0.05em 0.45em; white-space: nowrap; }
 .help-body .kv span { color: #555; align-self: center; }
 .help-dedication { margin-top: 1.8em; padding-top: 1.2em; border-top: 1px solid #e8e4dc; text-align: center; font-style: italic; color: #888; font-size: 0.85em; line-height: 1.7; }
 
-/* ── Settings modal ── */
 .modal {
   background: #fff; border-radius: 5px;
   padding: 1.5em 1.8em; width: 480px; max-width: 95vw;
   box-shadow: 0 8px 32px rgba(0,0,0,0.3);
 }
 .modal h2 { font-size: 1.1em; margin-bottom: 1.1em; }
-.modal-section { font-size: 0.7em; text-transform: uppercase; letter-spacing: 0.12em; color: #999; margin: 1em 0 0.5em; }
 .modal-row { display: flex; gap: 0.4em; margin-bottom: 0.7em; align-items: center; }
-.modal-row input { flex: 1; }
+.modal-row input { flex: 1; padding: 0.38em 0.6em; border: 1px solid #ccc; border-radius: 3px; font-family: Georgia, serif; font-size: 0.92em; background: #fafafa; color: #2a2218; }
+.modal-row input:focus { outline: none; border-color: #8b4513; background: #fff; }
 .modal-row label { width: 120px; flex-shrink: 0; font-size: 0.82em; color: #666; }
-.modal-trio { display: flex; gap: 0.4em; }
-.modal-trio input { width: 80px; flex-shrink: 0; }
-.modal-trio label { font-size: 0.78em; color: #888; align-self: center; }
 .modal-actions { display: flex; gap: 0.5em; justify-content: flex-end; margin-top: 1.4em; }
 </style>
 </head>
 <body>
 
-<!-- ── Setup screen ── -->
+<!-- ── No-project screen ── -->
 <div id="setup" style="display:none">
-  <h1>Atelier GABC</h1>
-  <p class="tagline">Chant grégorien — éditeur GABC &amp; compilateur PDF</p>
-
-  <div class="field">
-    <label>Dossier GABC — où se trouvent vos fichiers .gabc</label>
-    <div class="browse-row">
-      <input type="text" id="in-gabc-root" placeholder="/chemin/vers/gregorio">
-      <button class="btn" onclick="browse('in-gabc-root')">Parcourir…</button>
-    </div>
-  </div>
-
-  <div class="field">
-    <label>Fichier de configuration — ex. configuration.tex</label>
-    <div class="browse-row">
-      <input type="text" id="in-config-file" placeholder="Configuration par défaut (intégrée)">
-      <button class="btn" onclick="browseFile('in-config-file')">Parcourir…</button>
-    </div>
-    <p class="field-hint">Laisser vide pour utiliser la configuration intégrée.</p>
-  </div>
-
-  <div class="field">
-    <label>Chemin LuaLaTeX (laisser vide pour la détection automatique)</label>
-    <div class="browse-row">
-      <input type="text" id="in-lualatex" placeholder="lualatex">
-      <button class="btn btn-sm" onclick="detectLualatex()">Détecter</button>
-    </div>
-    <p class="field-hint" id="lualatex-status"></p>
-  </div>
-
+  <h1>Atelier Liturgique</h1>
+  <p class="tagline">Composer un bréviaire — texte, chant et polyphonie</p>
   <div class="setup-actions">
-    <button class="btn btn-primary" onclick="saveSetup()">Enregistrer et ouvrir</button>
-    <span class="setup-note">Les paramètres sont enregistrés localement et peuvent être modifiés ultérieurement.</span>
+    <button class="btn btn-primary" onclick="newProjectDialog()">Nouveau bréviaire…</button>
+    <button class="btn" onclick="openProjectDialog()">Ouvrir un bréviaire…</button>
   </div>
 </div>
 
@@ -381,47 +481,38 @@ header button:disabled { opacity: 0.32; cursor: not-allowed; }
   <button class="dismiss" onclick="dismissUpdate()" title="Ignorer">×</button>
 </div>
   <header>
-    <h1>Atelier GABC</h1>
+    <h1>Atelier Liturgique</h1>
     <span class="header-sep">|</span>
-    <span id="file-label">Aucun fichier sélectionné</span>
-    <button onclick="saveFile()" id="btn-save" title="Cmd+S">Enregistrer</button>
-    <button onclick="compileFile()" id="btn-compile" class="primary">Exporter en PDF</button>
-    <button onclick="openPdf()" id="btn-open-pdf" disabled>Ouvrir le PDF</button>
+    <button id="file-label" onclick="switchProject()">Aucun bréviaire ouvert</button>
+    <button onclick="saveProject()" id="btn-save" title="Cmd+S">Enregistrer</button>
+    <button onclick="exportPdf()" id="btn-export" class="primary">Exporter en PDF</button>
     <button onclick="openSettings()">Paramètres</button>
     <button onclick="openHelp()" title="Aide">?</button>
   </header>
 
+  <div id="font-banner">
+    <span id="font-banner-msg"></span>
+    <button class="btn btn-sm" onclick="openSettings()">Paramètres…</button>
+    <button class="dismiss" onclick="ignoreMissingFonts()" title="Ignorer">Ignorer</button>
+  </div>
+
   <div id="body">
-    <div id="sidebar">
-      <div id="sidebar-header">
-        <button id="folder-link" onclick="openCurrentFolder()" title="Changer le dossier GABC">
-          <span id="folder-label">Fichiers de chant</span>
-        </button>
-        <button id="btn-new-file" onclick="newFile()" title="Nouveau fichier GABC">+</button>
-      </div>
-      <div id="tree"></div>
-      <div id="sidebar-footer">
-        <button id="btn-export-all" onclick="exportAll()">Exporter tout en PDF</button>
-      </div>
-    </div>
-
-    <div class="resizer-x" id="sidebar-resizer"></div>
-
-    <div id="editor-area">
-      <div id="preview">
-        <span class="preview-placeholder">Sélectionner un fichier .gabc pour prévisualiser</span>
-      </div>
-      <div class="resizer-y" id="preview-resizer"></div>
-      <div id="cm-wrap">
-        <textarea id="editor"></textarea>
-      </div>
-      <div id="log-panel">
-        <div id="log-toggle">
-          <span class="arrow" id="log-arrow">▶</span>
-          Journal de compilation
+    <div id="content-row">
+      <div id="edit-panel">
+        <div id="edit-panel-header">
+          <span id="edit-panel-label"></span>
+          <button onclick="closeEditPanel()" title="Fermer">×</button>
         </div>
-        <div id="log-output"></div>
+        <div id="edit-panel-body"></div>
       </div>
+      <div id="item-list"></div>
+    </div>
+    <div id="log-panel">
+      <div id="log-toggle">
+        <span class="arrow" id="log-arrow">▶</span>
+        Journal d'export
+      </div>
+      <div id="log-output"></div>
     </div>
   </div>
 </div>
@@ -430,34 +521,155 @@ header button:disabled { opacity: 0.32; cursor: not-allowed; }
 <div id="settings-modal">
   <div class="modal">
     <h2>Paramètres</h2>
-    <div class="modal-section">Dossiers</div>
-    <div class="modal-row">
-      <label>Dossier GABC</label>
-      <input type="text" id="set-gabc-root">
-      <button class="btn btn-sm" onclick="browseModal('set-gabc-root')">…</button>
-    </div>
-    <div class="modal-row">
-      <label>Fichier de configuration</label>
-      <input type="text" id="set-config-file" placeholder="Configuration par défaut (intégrée)">
-      <button class="btn btn-sm" onclick="browseFileModal('set-config-file')">…</button>
-    </div>
-    <div class="field-hint" id="config-file-hint" style="margin:-0.4em 0 0.7em 122px;font-size:0.74em;color:#aaa"></div>
     <div class="modal-row">
       <label>Chemin LuaLaTeX</label>
       <input type="text" id="set-lualatex" placeholder="lualatex (détection auto)">
       <button class="btn btn-sm" onclick="detectLualatexModal()">Auto</button>
     </div>
     <div class="modal-row">
+      <label>Chemin LilyPond</label>
+      <input type="text" id="set-lilypond" placeholder="lilypond (détection auto)">
+      <button class="btn btn-sm" onclick="browseFileSetting('set-lilypond')">…</button>
+    </div>
+    <div class="modal-row">
       <label>Dossier de sortie</label>
-      <input type="text" id="set-output-folder" placeholder="Même dossier que le fichier .gabc">
+      <input type="text" id="set-output-folder" placeholder="Même dossier que le bréviaire">
       <button class="btn btn-sm" onclick="browseModal('set-output-folder')">…</button>
     </div>
-
+    <div class="modal-row">
+      <label>Fichiers manquants</label>
+      <label class="checkbox-row" title="Décoché : les éléments dont le fichier lié est introuvable sont simplement omis du PDF, sans laisser de trace">
+        <input type="checkbox" id="set-missing-notes">
+        Signaler les fichiers liés manquants dans le PDF exporté («&nbsp;[Fichier manquant&nbsp;: …]&nbsp;»)
+      </label>
+    </div>
     <div class="modal-actions" style="justify-content:space-between">
-      <button class="btn" onclick="openTemplate()">Modifier le modèle LaTeX…</button>
+      <div style="display:flex;gap:0.5em">
+        <button class="btn" id="btn-open-defs" onclick="openDefsEditor()" title="Format de page, marges et styles de texte du bréviaire ouvert">Mise en page &amp; styles…</button>
+        <button class="btn" onclick="openExportTemplate()">Modifier le modèle d'export…</button>
+      </div>
       <div style="display:flex;gap:0.5em">
         <button class="btn" onclick="closeSettings()">Annuler</button>
         <button class="btn btn-primary" onclick="saveSettingsModal()">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Defs editor modal (page geometry + named styles) ── -->
+<div id="defs-modal">
+  <div class="modal">
+    <h2 style="flex-shrink:0">Mise en page &amp; styles</h2>
+    <p class="defs-hint" style="flex-shrink:0">
+      Ces réglages sont enregistrés dans le bréviaire ouvert (pas dans l'application) —
+      pensez à <strong>Enregistrer</strong> le bréviaire après avoir appliqué.
+    </p>
+    <div id="defs-body">
+
+      <div class="defs-section-title">Page</div>
+      <div class="modal-row">
+        <label>Format</label>
+        <select id="defs-page-size" style="flex:1;padding:0.34em 0.5em;border:1px solid #ccc;border-radius:3px;font-family:Georgia,serif;font-size:0.92em;background:#fafafa;color:#2a2218"></select>
+      </div>
+      <div class="modal-row">
+        <label>Marges</label>
+        <input type="text" id="defs-page-margin" placeholder="ex. 1.5cm (vide = valeur par défaut de la classe)">
+      </div>
+      <div class="modal-row">
+        <label>Reliure (petit fond)</label>
+        <input type="text" id="defs-page-gutter" placeholder="ex. 0.5cm — marge supplémentaire côté reliure">
+      </div>
+
+      <div class="defs-section-title">Texte</div>
+      <div class="modal-row">
+        <label>Police</label>
+        <select id="defs-text-font" onchange="_onFontPick('defs-text-font','defs-font-status')" style="flex:1;padding:0.34em 0.5em;border:1px solid #ccc;border-radius:3px;font-family:Georgia,serif;font-size:0.92em;background:#fafafa;color:#2a2218">
+          <option value="">Police par défaut du moteur</option>
+        </select>
+        <span id="defs-font-status" style="flex:0 0 auto;font-size:0.8em;min-width:5.5em"></span>
+      </div>
+      <p class="defs-hint" id="defs-font-hint" style="margin-top:-0.3em">
+        Police de base du corps de texte. Par défaut, le grégorien et la polyphonie l'utilisent aussi (rendu uniforme) —
+        chacun peut recevoir sa propre police ci-dessous. La liste provient des polices installées sur cet ordinateur
+        (plus celles fournies avec l'application).
+        <button type="button" class="btn btn-sm" id="defs-rescan-btn" onclick="rescanFonts()"
+          style="margin-left:0.4em" title="Reconstruit la liste après l'installation d'une nouvelle police, sans redémarrer">↻ Rescanner</button>
+      </p>
+      <div class="modal-row">
+        <label>Taille du texte</label>
+        <input type="number" id="defs-text-size" min="6" max="72" step="0.5" placeholder="défaut" style="flex:0 0 6em">
+        <span class="defs-hint" style="margin:0">points (vide = taille par défaut du moteur)</span>
+      </div>
+      <div class="modal-row">
+        <label>Espacement français</label>
+        <select id="defs-french-spacing" style="flex:1;padding:0.34em 0.5em;border:1px solid #ccc;border-radius:3px;font-family:Georgia,serif;font-size:0.92em;background:#fafafa;color:#2a2218">
+          <option value="frpunct">Intégré (frpunct — par défaut, validé)</option>
+          <option value="babel">babel-french (ajoute la césure française — expérimental)</option>
+        </select>
+      </div>
+
+      <div class="defs-section-title">Chant grégorien (GABC)</div>
+      <div class="modal-row">
+        <label>Police</label>
+        <select id="defs-gabc-font" onchange="_onFontPick('defs-gabc-font','defs-gabc-font-status')" style="flex:1;padding:0.34em 0.5em;border:1px solid #ccc;border-radius:3px;font-family:Georgia,serif;font-size:0.92em;background:#fafafa;color:#2a2218">
+          <option value="">Comme le texte</option>
+        </select>
+        <span id="defs-gabc-font-status" style="flex:0 0 auto;font-size:0.8em;min-width:5.5em"></span>
+      </div>
+      <div class="modal-row">
+        <label>Taille des portées</label>
+        <input type="number" id="defs-staffsize" min="8" max="40" step="1" style="flex:0 0 6em">
+        <span class="defs-hint" style="margin:0">16 par défaut</span>
+      </div>
+
+      <div class="defs-section-title">Polyphonie (LilyPond)</div>
+      <div class="modal-row">
+        <label>Police</label>
+        <select id="defs-ly-font" onchange="_onFontPick('defs-ly-font','defs-ly-font-status')" style="flex:1;padding:0.34em 0.5em;border:1px solid #ccc;border-radius:3px;font-family:Georgia,serif;font-size:0.92em;background:#fafafa;color:#2a2218">
+          <option value="">Comme le texte</option>
+        </select>
+        <span id="defs-ly-font-status" style="flex:0 0 auto;font-size:0.8em;min-width:5.5em"></span>
+      </div>
+      <div class="modal-row">
+        <label>Taille des portées</label>
+        <input type="number" id="defs-ly-staffsize" min="8" max="40" step="1" placeholder="grégorien" style="flex:0 0 6em">
+        <span class="defs-hint" style="margin:0">vide = même taille que le grégorien</span>
+      </div>
+
+      <div class="defs-section-title">Styles de texte</div>
+      <p class="defs-hint">
+        Chaque style est le corps d'une commande TeX : <code>#1</code>, <code>#2</code>…
+        marquent où vont les champs de l'élément (9 au maximum).
+        L'aperçu ne reflète ni la couleur, ni la taille exacte, ni la police réelle — comme pour les éléments.
+      </p>
+      <div id="defs-style-list"></div>
+      <button class="btn btn-sm" onclick="addDefsStyle()">+ Nouveau style</button>
+
+    </div>
+    <div class="modal-actions" style="flex-shrink:0">
+      <button class="btn" onclick="closeDefsEditor()">Annuler</button>
+      <button class="btn btn-primary" id="defs-apply-btn" onclick="applyDefsEditor()">Appliquer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Export-template editor modal ── -->
+<div id="template-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:210;align-items:center;justify-content:center">
+  <div class="modal" style="width:min(860px,94vw);max-height:90vh;display:flex;flex-direction:column">
+    <h2 style="flex-shrink:0">Modèle d'export TeX <span id="tmpl-custom-badge" style="font-size:0.65em;font-weight:normal;color:#8b4513;margin-left:0.5em;display:none">(personnalisé)</span></h2>
+    <p style="font-size:0.8em;color:#888;margin:-0.6em 0 0.9em;flex-shrink:0">
+      Structure complète du fichier .tex exporté (modèle Jinja — voir les commentaires du fichier).
+      Une version personnalisée est enregistrée à part et survit aux mises à jour de l'application.
+    </p>
+    <textarea id="tmpl-editor" spellcheck="false"
+      style="flex:1;min-height:340px;resize:none;font-family:'Consolas','Menlo',monospace;font-size:12px;line-height:1.45;border:1px solid #ddd;border-radius:3px;padding:0.6em;background:#fafaf7;color:#2a2218;white-space:pre;overflow:auto"></textarea>
+    <div id="tmpl-status" style="display:none;flex-shrink:0;margin-top:0.6em;max-height:9em;overflow:auto;font-family:'Consolas','Menlo',monospace;font-size:11px;line-height:1.4;white-space:pre-wrap;border-radius:3px;padding:0.5em 0.7em"></div>
+    <div class="modal-actions" style="flex-shrink:0;justify-content:space-between;margin-top:1em">
+      <button class="btn" id="tmpl-reset-btn" onclick="resetExportTemplate()">Restaurer le modèle par défaut</button>
+      <div style="display:flex;gap:0.5em">
+        <button class="btn" id="tmpl-verify-btn" onclick="verifyExportTemplate()" title="Compile un mini-document d'essai (texte + gabc + lilypond) avec ce modèle — peut prendre une minute">Vérifier (compilation)</button>
+        <button class="btn" onclick="closeExportTemplate()">Annuler</button>
+        <button class="btn btn-primary" id="tmpl-save-btn" onclick="saveExportTemplate()">Enregistrer</button>
       </div>
     </div>
   </div>
@@ -470,30 +682,51 @@ header button:disabled { opacity: 0.32; cursor: not-allowed; }
     <div class="help-body">
 
       <h3>Vue d'ensemble</h3>
-      <p>Atelier GABC est un éditeur de fichiers GABC avec prévisualisation en temps réel et export en PDF via LuaLaTeX et gregoriotex.</p>
+      <p>Atelier Liturgique permet de composer un bréviaire à partir de fragments de texte, de chant grégorien (GABC), de polyphonie (Harmony Assistant) et d'images, puis d'exporter le tout en un seul fichier TeX et de le compiler en PDF.</p>
 
       <h3>Utilisation</h3>
       <ol>
-        <li>Cliquez sur le nom du dossier en haut à gauche pour choisir votre dossier de fichiers .gabc</li>
-        <li>Sélectionnez un fichier dans la liste</li>
-        <li>Modifiez le contenu dans l'éditeur — la prévisualisation se met à jour automatiquement</li>
-        <li><strong>Enregistrer</strong> (Cmd+S) pour sauvegarder</li>
-        <li><strong>Exporter en PDF</strong> pour compiler, puis <strong>Ouvrir le PDF</strong> pour l'afficher</li>
+        <li>Créez un nouveau bréviaire ou ouvrez-en un existant (extension <code>.breviaire</code>)</li>
+        <li>Ajoutez des éléments — texte, chant GABC, polyphonie ou image — avec les boutons en bas de la liste</li>
+        <li>Faites glisser la poignée à gauche de chaque élément pour réordonner</li>
+        <li>Pour le texte, choisissez un style (titre, sous-titre, corps, rubrique) dans le menu de l'élément</li>
+        <li>Pour un chant GABC : <strong>Lier…</strong> un fichier existant ou <strong>Nouveau…</strong> pour en créer un vierge, puis cliquez sur le chant pour modifier sa notation — l'aperçu se met à jour en tapant et le fichier <code>.gabc</code> s'enregistre automatiquement</li>
+        <li><strong>Enregistrer</strong> (Cmd+S) pour sauvegarder le fichier de projet</li>
       </ol>
 
-      <h3>Format GABC</h3>
-      <p>Un fichier GABC contient un en-tête (nom, mode…) séparé du corps par <code>%%</code>, suivi de syllabes associées à leur notation neumatique entre parenthèses.</p>
-      <pre>name: Kyrie;
-mode: 1;
-%%
-Ky(f)ri(gf)e(e) e(h)lei(ixjih)son(h.)</pre>
+      <h3>Polyphonie (partitions LilyPond)</h3>
+      <p>Un élément de polyphonie repose sur trois fichiers aux rôles distincts :</p>
+      <ul>
+        <li><strong>La partition <code>.ly</code> (LilyPond)</strong> — le seul fichier qui entre réellement dans le PDF. C'est lui que vous modifiez dans l'application et qui est suivi par le bréviaire.</li>
+        <li><strong>Un fichier MusicXML</strong> — un format d'échange que <em>tout</em> logiciel de notation sait exporter (Harmony Assistant, MuseScore, Sibelius, Finale…). Il sert uniquement à <em>créer ou régénérer</em> la partition <code>.ly</code> ; il n'est pas conservé dans le projet.</li>
+        <li><strong>Un fichier source (facultatif)</strong> — le document d'origine dans lequel vous tenez la musique (un <code>.myr</code> Harmony Assistant, un <code>.mscz</code> MuseScore…). Il n'est ni lu ni exporté : il ne sert qu'au rappel « partition périmée ».</li>
+      </ul>
+      <ol>
+        <li>Dans votre logiciel de notation, exportez la pièce en <strong>MusicXML</strong></li>
+        <li>Cliquez <strong>Importer depuis MusicXML…</strong> sur l'élément : le fichier est converti en partition <code>.ly</code> modifiable</li>
+        <li>Pour de petites corrections de notes, cliquez sur l'aperçu et modifiez directement le <code>.ly</code> — inutile de rouvrir votre logiciel de notation ; le fichier s'enregistre automatiquement et l'aperçu se recompile quelques secondes après la fin de la saisie (chaque rendu prend 3 à 5 secondes, contrairement au chant GABC qui est instantané)</li>
+        <li>Pour un changement de fond, modifiez plutôt le document d'origine, réexportez en MusicXML et réimportez — attention, la réimportation écrase les corrections faites à la main dans le <code>.ly</code></li>
+      </ol>
+      <p>Si vous avez indiqué un fichier source et qu'il devient plus récent que la partition <code>.ly</code>, l'élément affiche « partition périmée » — un simple rappel de réimporter, rien n'est jamais réimporté automatiquement.</p>
+      <p><strong>Note :</strong> les logiciels de notation ne peuvent pas être pilotés depuis Atelier Liturgique. L'export MusicXML reste une étape manuelle, à refaire uniquement quand la musique change vraiment.</p>
 
-      <h3>À propos de la prévisualisation</h3>
-      <p>La prévisualisation est générée par <em>exsurge</em> et ne tient pas compte du fichier de configuration (polices, ornements, macros). Elle est uniquement destinée à vérifier les notes et le texte, et ne reflète pas le rendu final du PDF.</p>
+      <h3>Images</h3>
+      <p>Un élément image accepte les formats que LaTeX sait inclure directement : <strong>PDF, PNG et JPEG</strong>. Pour un dessin vectoriel (SVG, EPS…), exportez-le d'abord en PDF depuis votre application de dessin. L'image est intégrée dans le fichier TeX exporté : vous pouvez recompiler ce fichier avec l'éditeur TeX de votre choix, ou l'envoyer à quelqu'un d'autre, et il fonctionnera tel quel — sans avoir à joindre les images séparément.</p>
+      <p>Cliquez sur l'aperçu pour régler la <strong>largeur</strong> (en proportion de la largeur du texte) et <strong>recadrer</strong> l'image en faisant glisser ses bords — le recadrage est non destructif (le fichier d'origine n'est jamais modifié). Comme pour la polyphonie, un <strong>fichier source facultatif</strong> (le <code>.svg</code> d'origine, par exemple) déclenche le rappel « image périmée » s'il devient plus récent que l'image liée.</p>
+
+      <h3>Polices et tailles</h3>
+      <p>Dans <strong>Paramètres → Mise en page et styles</strong>, vous choisissez la <strong>police</strong> et la <strong>taille du texte</strong>, et — indépendamment — celles du <strong>chant grégorien</strong> et de la <strong>polyphonie</strong>. Par défaut tout est <strong>uniforme</strong> : le grégorien et la polyphonie reprennent la police du texte (chacun affiche « Comme le texte ») ; réglez-les pour les différencier.</p>
+      <p>La liste des polices provient de celles installées sur cet ordinateur. Toutes ne sont pas utilisables par le moteur TeX : la police choisie est vérifiée sur-le-champ (<span style="color:#4a7a33">✓ police OK</span> ou <span style="color:#b3402a">✗ introuvable</span>). Pour un rendu identique sur un autre ordinateur, il faut que la même police y soit installée.</p>
+
+      <h3>À propos de l'aperçu du texte</h3>
+      <p>L'aperçu sous chaque élément de texte est généré par <em>LaTeX.js</em> et reproduit fidèlement la mise en page (alignement, gras/italique, colonnes) mais <strong>pas la couleur, ni la taille de police exacte, ni la police de caractères réelle</strong> du PDF final — ces trois aspects ne sont volontairement pas simulés plutôt que d'être approximés de façon trompeuse. Seul le PDF exporté reflète le rendu définitif.</p>
+
+      <h3>Fichiers manquants</h3>
+      <p>À l'ouverture d'un bréviaire, les fichiers liés introuvables (déplacés, renommés, autre ordinateur…) sont listés dans une fenêtre : <strong>Relier…</strong> pour indiquer le nouvel emplacement, ou <strong>Ignorer</strong> pour ne plus être interrogé — le choix est enregistré dans le bréviaire. Dans les deux cas l'élément garde sa pastille « fichier manquant » tant que le fichier n'est pas retrouvé, et le reste du bréviaire reste utilisable. Un réglage dans les Paramètres décide si les fichiers manquants sont signalés dans le PDF exporté ou simplement omis.</p>
 
       <h3>Raccourcis clavier</h3>
       <div class="kv">
-        <kbd>Cmd+S</kbd><span>Enregistrer le fichier</span>
+        <kbd>Cmd+S</kbd><span>Enregistrer le bréviaire</span>
         <kbd>Échap</kbd><span>Fermer cette fenêtre</span>
       </div>
 
@@ -501,14 +734,7 @@ Ky(f)ri(gf)e(e) e(h)lei(ixjih)son(h.)</pre>
       <ul>
         <li><strong>MacTeX</strong> ou <strong>TeX Live</strong> — fournit lualatex et gregoriotex</li>
         <li><strong>gregorio</strong> — compilateur GABC (inclus dans TeX Live 2021+)</li>
-      </ul>
-
-      <h3>Paramètres</h3>
-      <ul>
-        <li><strong>Dossier GABC</strong> — racine de votre bibliothèque de fichiers .gabc</li>
-        <li><strong>Fichier de configuration</strong> — fichier .tex chargé avant le document (polices, marges, macros). Laisser vide pour utiliser la configuration intégrée (configuration.tex).</li>
-        <li><strong>Dossier de sortie</strong> — où les PDF sont enregistrés (par défaut : même dossier que le .gabc)</li>
-        <li><strong>Largeur de partition</strong> — largeur en cm du score dans le PDF</li>
+        <li><strong>LilyPond</strong> — moteur de gravure pour la polyphonie</li>
       </ul>
 
       <p class="help-dedication">Réalisé pour la Famille Monastique de Bethléem,<br>de l'Assomption de la Vierge<br>et de saint Bruno<br><br><span id="help-version" style="font-style:normal;font-size:0.85em;opacity:0.5"></span></p>
@@ -520,61 +746,32 @@ Ky(f)ri(gf)e(e) e(h)lei(ixjih)son(h.)</pre>
   </div>
 </div>
 
-<!-- ── Template editor modal ── -->
-<div id="template-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:200;align-items:center;justify-content:center">
-  <div class="modal" style="width:min(820px,92vw);max-height:88vh;display:flex;flex-direction:column">
-    <h2 style="flex-shrink:0">Modèle LaTeX <span id="tmpl-custom-badge" style="font-size:0.65em;font-weight:normal;color:#8b4513;margin-left:0.5em;display:none">(personnalisé)</span></h2>
-    <p style="font-size:0.8em;color:#888;margin:-0.6em 0 0.9em;flex-shrink:0">Variables disponibles : <code>&lt;&lt; config_file &gt;&gt;</code>, <code>&lt;&lt; gabc_name &gt;&gt;</code></p>
-    <div id="tmpl-cm-wrap" style="flex:1;overflow:hidden;border:1px solid #ddd;border-radius:3px;min-height:320px"></div>
-    <div class="modal-actions" style="flex-shrink:0;justify-content:space-between;margin-top:1em">
-      <button class="btn" id="tmpl-reset-btn" onclick="resetTemplate()">Restaurer le modèle par défaut</button>
-      <div style="display:flex;gap:0.5em">
-        <button class="btn" onclick="closeTemplate()">Annuler</button>
-        <button class="btn btn-primary" onclick="saveTemplate()">Enregistrer</button>
-      </div>
+<!-- ── Relink modal: missing linked files found when opening a project ── -->
+<div id="relink-modal">
+  <div class="modal">
+    <h2>Fichiers liés introuvables</h2>
+    <p class="defs-hint">Certains fichiers liés à ce bréviaire n'ont pas été trouvés à leur emplacement enregistré
+      (déplacés, renommés, ou sur un autre ordinateur ?). <strong>Relier…</strong> pour indiquer le nouvel
+      emplacement, ou <strong>Ignorer</strong> pour ne plus le demander à l'ouverture — l'élément restera signalé
+      « fichier manquant » dans la liste. « Plus tard » repose la question à la prochaine ouverture.</p>
+    <div id="relink-list"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="closeRelinkModal()">Plus tard</button>
     </div>
   </div>
 </div>
 
-<script src="/codemirror.min.js"></script>
 <script>
 'use strict';
 
-// ── Exsurge GABC rendering (worker — see preview-worker.js) ──────────────
-
-function showFallback(container) {
-  container.innerHTML = '<span class="preview-placeholder">Erreur de rendu</span>';
-}
-
-// ── Web Worker preview renderer ───────────────────────────────────────────
-
-const _worker = new Worker('/preview-worker.js');
-let _previewGen = 0;
-
-_worker.onmessage = ({ data: { gen, svg, error } }) => {
-  if (error) console.error('[preview worker]', error);
-  if (gen !== _previewGen) return;
-  const preview = document.getElementById('preview');
-  if (svg) preview.innerHTML = svg;
-  else showFallback(preview);
-};
-_worker.onerror = (e) => {
-  console.error('[preview worker load error]', e.message, e);
-  document.getElementById('preview').innerHTML =
-    '<span class="preview-placeholder">Aperçu indisponible — erreur worker</span>';
-};
-
 // ── State ────────────────────────────────────────────────────────────────
 
-let cm = null;
-let currentFile = null;   // {path, name, dir}
-let currentPdfRel = null;
+let project = null;       // {path, data, item_status}
 let isDirty = false;
 let _updating = false;
-let loading = false;      // true while setValue is running; suppresses dirty flag
-let previewTimer = null;
-let gabcRoot = '';
 let _browseInProgress = false;
+let _dragFromIndex = null;
+let editing = null;       // { itemIndex, colIndex } — which text column the side panel is editing, if any
 
 // ── API helper ───────────────────────────────────────────────────────────
 
@@ -589,17 +786,6 @@ async function api(url, method = 'GET', data = null) {
   }
 }
 
-// ── Setup ────────────────────────────────────────────────────────────────
-
-async function init() {
-  const settings = await api('/api/settings');
-  if (settings.gabc_root) {
-    showApp(settings);
-  } else {
-    document.getElementById('setup').style.display = '';
-  }
-}
-
 async function _browseApi(url) {
   if (_browseInProgress) return null;
   _browseInProgress = true;
@@ -607,82 +793,808 @@ async function _browseApi(url) {
   finally { _browseInProgress = false; }
 }
 
-async function browse(inputId) {
-  const res = await _browseApi('/api/browse-folder');
-  if (!res) return;
-  if (res.path) {
-    document.getElementById(inputId).value = res.path;
+// ── Boot / project open-create-switch ─────────────────────────────────────
+
+async function init() {
+  const last = await api('/api/project/last');
+  if (last.exists) {
+    await loadProject(last.path);
   } else {
-    alert('Impossible d\'ouvrir le sélecteur de dossier. Veuillez saisir le chemin manuellement.');
+    document.getElementById('setup').style.display = '';
   }
 }
 
-async function browseFile(inputId) {
-  const res = await _browseApi('/api/browse-file');
-  if (res && res.path) document.getElementById(inputId).value = res.path;
-}
-
-async function detectLualatex() {
-  const res = await api('/api/detect-lualatex');
-  const st = document.getElementById('lualatex-status');
-  const inp = document.getElementById('in-lualatex');
-  if (res.found) {
-    inp.value = res.path;
-    st.textContent = '✓ Trouvé : ' + res.path;
-    st.style.color = '#5a8030';
-  } else {
-    st.textContent = 'Introuvable dans le PATH. Installez MacTeX ou TeX Live, ou saisissez le chemin manuellement.';
-    st.style.color = '#c44';
+async function loadProject(path) {
+  const res = await api('/api/project?path=' + encodeURIComponent(path));
+  if (res.error) {
+    alert('Impossible d\'ouvrir ce bréviaire : ' + res.error);
+    return;
   }
-}
-
-async function saveSetup() {
-  const gabcRoot = document.getElementById('in-gabc-root').value.trim();
-  if (!gabcRoot) { alert('Veuillez saisir le chemin du dossier GABC.'); return; }
-  const settings = {
-    gabc_root: gabcRoot,
-    config_file: document.getElementById('in-config-file').value.trim(),
-    lualatex_path: document.getElementById('in-lualatex').value.trim(),
-  };
-  await api('/api/settings', 'POST', settings);
+  closeEditPanel(); // any open panel refers to the previous project's items
+  _gabcSvgCache.clear(); // linked files may differ (or have changed on disk) across projects
+  _lyPngCache.clear();
+  project = res;
+  isDirty = false;
   document.getElementById('setup').style.display = 'none';
-  showApp(settings);
-}
-
-// ── Main app ─────────────────────────────────────────────────────────────
-
-function showApp(settings) {
-  gabcRoot = settings.gabc_root || '';
   document.getElementById('app').style.display = 'flex';
-  if (!cm) initEditor();
-  loadTree();
-  updateFolderLink(null);
+  _applyWysiwygFonts();
+  renderItemList();
+  updateFileLabel();
+  promptMissingLinks();
+  _checkProjectFonts();   // async; banner appears when the check returns
 }
 
-function initEditor() {
-  cm = CodeMirror.fromTextArea(document.getElementById('editor'), {
+async function openProjectDialog() {
+  const res = await _browseApi('/api/browse-project');
+  if (res && res.path) await loadProject(res.path);
+}
+
+async function newProjectDialog() {
+  const res = await _browseApi('/api/browse-project-save');
+  if (!res || !res.path) return;
+  const created = await api('/api/project/new', 'POST', { path: res.path });
+  if (created.error) { alert('Impossible de créer le bréviaire : ' + created.error); return; }
+  closeEditPanel(); // any open panel refers to the previous project's items
+  project = created;
+  isDirty = false;
+  document.getElementById('setup').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  _applyWysiwygFonts();
+  renderItemList();
+  updateFileLabel();
+}
+
+async function switchProject() {
+  if (isDirty && !confirm('Des modifications non enregistrées existent. Ouvrir un autre bréviaire quand même ?')) return;
+  const res = await _browseApi('/api/browse-project');
+  if (res && res.path) await loadProject(res.path);
+}
+
+// ── Missing linked files: load-time relink/ignore flow (Phase 5) ─────────
+//
+// On open, every linked file the project references was checked
+// server-side (file_status). Missing ones the user hasn't already chosen
+// to ignore are listed in one modal: relink (native dialog) or ignore.
+// "Ignore" is persisted per item+field (item.ignored_missing) so the
+// question isn't re-asked at every open — the card keeps its red
+// « fichier manquant » badge either way, and whether the exported PDF
+// mentions the item is the Settings « fichiers manquants » toggle.
+
+function _linkedFieldMeta(item, field) {
+  if (item.type === 'gabc') return { label: 'Chant (GABC)', ext: 'gabc' };
+  if (item.type === 'myr' && field === 'source_path') return { label: 'Original (.myr)', ext: 'myr' };
+  return { label: 'Partition (.ly)', ext: 'ly' };
+}
+
+function promptMissingLinks() {
+  if (!project) return;
+  const rows = [];
+  project.data.items.forEach((item, index) => {
+    const status = project.item_status[index] || { missing: [] };
+    status.missing.forEach(field => {
+      if (!(item.ignored_missing || []).includes(field)) rows.push({ index, field });
+    });
+  });
+  if (!rows.length) return;
+  const list = document.getElementById('relink-list');
+  list.innerHTML = '';
+  rows.forEach(r => list.appendChild(_relinkRow(r.index, r.field)));
+  document.getElementById('relink-modal').classList.add('open');
+}
+
+function _relinkRow(index, field) {
+  const item = project.data.items[index];
+  const meta = _linkedFieldMeta(item, field);
+  const row = document.createElement('div');
+  row.className = 'relink-row';
+
+  const label = document.createElement('span');
+  label.className = 'relink-row-label';
+  label.textContent = `Élément ${index + 1} — ${meta.label}`;
+  row.appendChild(label);
+
+  const path = document.createElement('span');
+  path.className = 'relink-row-path';
+  path.textContent = item[field] || '';
+  path.title = item[field] || '';
+  row.appendChild(path);
+
+  const done = msg => {
+    row.querySelectorAll('button').forEach(b => b.remove());
+    const mark = document.createElement('span');
+    mark.className = 'relink-row-done';
+    mark.textContent = msg;
+    row.appendChild(mark);
+  };
+
+  const relinkBtn = document.createElement('button');
+  relinkBtn.className = 'btn btn-sm';
+  relinkBtn.textContent = 'Relier…';
+  relinkBtn.addEventListener('click', async () => {
+    const res = await _browseApi('/api/browse-linked-file?ext=' + encodeURIComponent(meta.ext));
+    if (!res || !res.path) return;
+    item[field] = res.path;
+    if (item.ignored_missing) item.ignored_missing = item.ignored_missing.filter(f => f !== field);
+    // The user just picked this file in a dialog — it exists; update the
+    // status client-side (a server recheck would read the not-yet-saved
+    // project from disk and miss the new path).
+    const status = project.item_status[index];
+    if (status) status.missing = status.missing.filter(f => f !== field);
+    markDirty();
+    renderItemList();
+    done('✓ relié');
+  });
+  row.appendChild(relinkBtn);
+
+  const ignoreBtn = document.createElement('button');
+  ignoreBtn.className = 'btn btn-sm';
+  ignoreBtn.textContent = 'Ignorer';
+  ignoreBtn.title = 'Ne plus demander à l\'ouverture — l\'élément restera signalé « fichier manquant »';
+  ignoreBtn.addEventListener('click', () => {
+    item.ignored_missing = [...(item.ignored_missing || []), field];
+    markDirty();
+    done('ignoré');
+  });
+  row.appendChild(ignoreBtn);
+
+  return row;
+}
+
+function closeRelinkModal() {
+  document.getElementById('relink-modal').classList.remove('open');
+}
+
+function updateFileLabel() {
+  const label = document.getElementById('file-label');
+  label.textContent = project
+    ? (isDirty ? '● ' : '') + project.path
+    : 'Aucun bréviaire ouvert';
+}
+
+// ── Item list rendering ───────────────────────────────────────────────────
+
+function markDirty() {
+  if (!isDirty) { isDirty = true; updateFileLabel(); }
+}
+
+// Live style preview via LaTeX.js (real library, evaluated and integrated —
+// see TODO.md Phase 2 for the spike that led here). Runs on the main thread:
+// LaTeX.js's HtmlGenerator builds real DOM nodes and needs a real `document`,
+// which a Web Worker doesn't have — unlike exsurge, no polyfill is needed
+// here since we're already on the main thread.
+//
+// Known, permanent inaccuracies (documented in Help, not silently hidden):
+//   - colour: LaTeX.js's \color/\textcolor are literal no-op stubs upstream
+//     (confirmed from its xcolor.ts source) — never rendered in preview.
+//   - font size: \fontsize{}{} is not a silent no-op like colour, it's an
+//     unrecognised macro that would abort parsing entirely, so it's
+//     stripped before parsing rather than left in. We deliberately do NOT
+//     substitute a different size (e.g. nearest named step) — that would
+//     misrepresent what the style actually specifies, so size just isn't
+//     previewed, same honest treatment as colour.
+//   - font face: only LaTeX.js's own bundled roman/sans/mono substitute
+//     fonts are available (\rmfamily/\sffamily/\ttfamily) — there is no
+//     fontspec support, so real export fonts (e.g. Adobe Garamond Pro) are
+//     never reflected here.
+function escapeLatexText(s) {
+  return String(s).replace(/[\\{}&#%$_^~]/g, c => '\\' + c);
+}
+
+// A style template's field count is however many distinct #N placeholders
+// it references — not something the app or the user decides independently.
+// A title/subtitle style might use #1/#2 stacked with different sizes; a
+// composer/poet byline might place them left/right; a parallel-text style
+// might set them side by side — that's entirely up to the template's own
+// TeX, so we only ever go by the numbers, never assume field meaning.
+function styleFieldCount(template) {
+  if (!template) return 1;
+  const nums = [...template.matchAll(/#(\d+)/g)].map(m => parseInt(m[1], 10));
+  return nums.length ? Math.max(...nums) : 1;
+}
+
+function renderStylePreview(template, contentsList) {
+  if (!window.latexjs) return { html: null, error: 'Aperçu indisponible' };
+  // Replace with a space, not '', when stripping \fontsize{}{}\selectfont —
+  // TeX macro names are just backslash+letters with no automatic word
+  // boundary, so e.g. \bfseries immediately followed by real text would
+  // merge into one invalid macro name (\bfseriesOffice).
+  let body = (template || '').replace(/\\fontsize\{[^}]*\}\{[^}]*\}\s*(\\selectfont\s*)?/g, ' ');
+  // Substitute highest-numbered placeholder first so e.g. #10 (unlikely in
+  // practice, but cheap to guard) isn't clobbered by a #1 replacement.
+  for (let i = contentsList.length; i >= 1; i--) {
+    body = body.split(`#${i}`).join(escapeLatexText(contentsList[i - 1] || ''));
+  }
+  body = body.trim();
+  const pageSize = (project.data.defs.page && project.data.defs.page.size) || 'a5paper';
+  // xcolor is always loaded so \color/\textcolor at least parse (as no-ops —
+  // see the comment above this function) instead of aborting the render.
+  const tex = `\\documentclass[${pageSize}]{article}\\usepackage{xcolor}\\usepackage{multicol}\\begin{document}${body}\\end{document}`;
+  try {
+    const generator = new window.latexjs.HtmlGenerator({ hyphenate: false });
+    const doc = window.latexjs.parse(tex, { generator: generator }).htmlDocument();
+    return { html: doc.body.innerHTML, error: null };
+  } catch (e) {
+    return { html: null, error: String((e && e.message) || e) };
+  }
+}
+
+function updateTextPreview(previewEl, template, contentsList) {
+  const { html, error } = renderStylePreview(template, contentsList);
+  previewEl.innerHTML = html || `<span class="item-preview-error">${error || 'Aperçu indisponible'}</span>`;
+}
+
+// ── GABC preview (exsurge, in the worker — see preview-worker.js) ────────
+//
+// Same worker as the old single-file editor, but routed per item card:
+// each render request carries a generation number mapped to its target
+// element, and the element remembers the latest generation asked of it so
+// a slow older render can never overwrite a newer one. Rendered SVG is
+// cached by file path — renderItemList() runs on every edit, and
+// re-fetching + re-rendering every chant each time would flicker badly.
+
+let _gabcWorkerInstance = null;
+let _gabcGen = 0;
+const _gabcTargets = new Map();   // gen -> {el, cacheKey}
+const _gabcSvgCache = new Map();  // file path -> svg markup
+
+function _gabcWorker() {
+  if (!_gabcWorkerInstance) {
+    _gabcWorkerInstance = new Worker('/preview-worker.js');
+    _gabcWorkerInstance.onmessage = ({ data: { gen, svg, error } }) => {
+      if (error) console.error('[gabc worker]', error);
+      const target = _gabcTargets.get(gen);
+      _gabcTargets.delete(gen);
+      if (!target || target.el.dataset.gabcGen !== String(gen)) return;
+      if (svg) {
+        target.el.innerHTML = svg;
+        if (target.cacheKey) _gabcSvgCache.set(target.cacheKey, svg);
+      } else {
+        target.el.innerHTML = '<span class="preview-placeholder">Rendu du chant impossible (notation incomplète ?)</span>';
+      }
+    };
+    _gabcWorkerInstance.onerror = e => console.error('[gabc worker load]', e.message || e);
+  }
+  return _gabcWorkerInstance;
+}
+
+// Strip unmatched '(' so exsurge never hangs on half-typed neumes — same
+// proven logic as the old editor (a '(' with no ')' before the next '('
+// is dropped; everything after the last ')' keeps text only, capped).
+function gabcForPreview(gabc, sepIdx) {
+  const header = sepIdx !== -1 ? gabc.slice(0, sepIdx + 2) : '';
+  const body = sepIdx !== -1 ? gabc.slice(sepIdx + 2) : gabc;
+  const lastParen = body.lastIndexOf(')');
+  if (lastParen === -1) return header + body.replace(/\(/g, '');
+  const safeHead = body.slice(0, lastParen + 1).replace(/\([^)]*(?=\(|$)/g, '');
+  const tail = body.slice(lastParen + 1);
+  const safeTail = (tail.length > 100 ? tail.slice(0, 100) + '…' : tail).replace(/\(/g, '');
+  return header + safeHead + safeTail;
+}
+
+function requestGabcRender(el, gabc, cacheKey) {
+  const sepIdx = gabc.indexOf('%%');
+  const body = sepIdx !== -1 ? gabc.slice(sepIdx + 2) : gabc;
+  if (!body.includes('(') || !body.includes(')')) {
+    el.innerHTML = '<span class="preview-placeholder">Aucune notation neumatique</span>';
+    return;
+  }
+  const gen = ++_gabcGen;
+  el.dataset.gabcGen = String(gen);
+  _gabcTargets.set(gen, { el, cacheKey });
+  // The card may not be laid out yet when this is called from
+  // renderItemCard — fall back to the list's width, which the card fills.
+  const width = Math.max((el.clientWidth || document.getElementById('item-list').clientWidth || 600) - 40, 80);
+  _gabcWorker().postMessage({ gabc: gabcForPreview(gabc, sepIdx), width, gen });
+}
+
+function renderGabcCardPreview(previewEl, item) {
+  const path = item.file_path;
+  if (_gabcSvgCache.has(path)) {
+    previewEl.innerHTML = _gabcSvgCache.get(path);
+    return;
+  }
+  previewEl.innerHTML = '<span class="preview-placeholder">Rendu du chant…</span>';
+  api('/api/linked-file?path=' + encodeURIComponent(path)).then(res => {
+    if (res.error) {
+      previewEl.innerHTML = '<span class="preview-placeholder">' + esc(res.error) + '</span>';
+    } else {
+      requestGabcRender(previewEl, res.content, path);
+    }
+  });
+}
+
+// ── Lilypond PNG preview per myr item (Phase 4) ──────────────────────────
+//
+// Unlike gabc's instant client-side exsurge, each render is a real
+// server-side lilypond compile (~3–5 s measured) — so renders are cached
+// per .ly path, deduplicated, and run through a one-at-a-time queue so a
+// project full of polyphony doesn't storm lilypond at load. Successful
+// renders replace the image; failures and recompiles never blank an
+// existing preview (the stale image stays visible, per the Phase 0 UX
+// decision).
+
+const _lyPngCache = new Map();  // ly path -> data URI of the last successful render
+const _lyPending = new Set();   // paths queued or compiling (dedup across re-renders)
+const _lyQueue = [];
+let _lyBusy = false;
+
+function _projectStaffsize() {
+  return (project && project.data.defs.music && project.data.defs.music.staffsize) || 16;
+}
+
+// Family LilyPond lyrics should use in a preview: the ly override, else the
+// base text font (uniform default), else engine default (''). Mirrors how the
+// exporter resolves ly_font, so the preview matches the exported PDF.
+function _projectLyFont() {
+  const t = (project && project.data.defs.typography) || {};
+  return (t.ly_font || t.text_font || '').trim();
+}
+
+// ── WYSIWYG: render text items in the chosen body font ──────────────────────
+// The browser typesets with its own engine (not luaotfload), so metrics won't
+// be pixel-identical to the PDF, but the *typeface* matches — the visual point.
+// Empty text_font keeps the Computer-Modern-ish default (the engine default).
+function _applyWysiwygFonts() {
+  const t = (project && project.data.defs.typography) || {};
+  const font = (t.text_font || '').trim();
+  const stack = font
+    ? "'" + font.replace(/'/g, '') + "', 'Computer Modern Serif', Georgia, serif"
+    : "'Computer Modern Serif', Georgia, serif";
+  let el = document.getElementById('wysiwyg-style');
+  if (!el) { el = document.createElement('style'); el.id = 'wysiwyg-style'; document.head.appendChild(el); }
+  el.textContent = '.item-text-preview .body { font-family: ' + stack + '; }';
+}
+
+// ── Font preflight: warn when a referenced family won't load here ────────────
+// A .breviaire made where a font was installed, opened where it isn't. Ignored
+// families are remembered for the session so the banner doesn't nag; export
+// re-warns regardless (server side), so ignoring is never a silent trap.
+const _ignoredMissingFonts = new Set();
+let _missingFonts = [];
+
+async function _checkProjectFonts() {
+  if (!project) return;
+  const res = await api('/api/check-fonts', 'POST', { defs: project.data.defs });
+  _missingFonts = (res && res.missing) || [];
+  _renderFontBanner();
+}
+
+function _renderFontBanner() {
+  const banner = document.getElementById('font-banner');
+  const show = _missingFonts.filter(f => !_ignoredMissingFonts.has(f));
+  if (!show.length) { banner.classList.remove('visible'); return; }
+  const names = show.map(f => '« ' + f + ' »').join(', ');
+  document.getElementById('font-banner-msg').textContent =
+    (show.length > 1 ? 'Polices introuvables sur cette machine : ' : 'Police introuvable sur cette machine : ')
+    + names + " — l'export échouerait tant qu'elle n'est pas installée ou remplacée.";
+  banner.classList.add('visible');
+}
+
+function ignoreMissingFonts() {
+  _missingFonts.forEach(f => _ignoredMissingFonts.add(f));
+  _renderFontBanner();
+}
+
+// Re-query targets at completion time instead of capturing elements:
+// renderItemList rebuilds the DOM freely while a compile is in flight.
+function _lyPreviewEls(path) {
+  return Array.from(document.querySelectorAll('.item-ly-preview'))
+    .filter(el => el.dataset.lyPath === path);
+}
+
+function _setLyPreviewImg(el, dataUri) {
+  el.innerHTML = '';
+  const img = document.createElement('img');
+  img.src = dataUri;
+  img.alt = 'Aperçu de la partition';
+  el.appendChild(img);
+}
+
+function renderLyCardPreview(previewEl, item) {
+  const path = item.file_path;
+  previewEl.dataset.lyPath = path;
+  if (_lyPngCache.has(path)) {
+    _setLyPreviewImg(previewEl, _lyPngCache.get(path));
+    return;
+  }
+  previewEl.innerHTML = '<span class="preview-placeholder">Rendu de la partition… (quelques secondes)</span>';
+  if (_lyPending.has(path)) return;
+  _lyPending.add(path);
+  _lyQueue.push(path);
+  _pumpLyQueue();
+}
+
+async function _pumpLyQueue() {
+  if (_lyBusy) return;
+  const path = _lyQueue.shift();
+  if (!path) return;
+  _lyBusy = true;
+  try {
+    const res = await api('/api/ly-preview', 'POST', { path, staffsize: _projectStaffsize(), font: _projectLyFont() });
+    if (res.ok) {
+      _lyPngCache.set(path, res.png);
+      _lyPreviewEls(path).forEach(el => _setLyPreviewImg(el, res.png));
+    } else {
+      const first = (res.error || 'erreur inconnue').split('\n')[0];
+      _lyPreviewEls(path).forEach(el => {
+        el.innerHTML = '<span class="preview-placeholder">Compilation impossible : ' + esc(first) + '</span>';
+      });
+    }
+  } finally {
+    _lyPending.delete(path);
+    _lyBusy = false;
+    _pumpLyQueue();
+  }
+}
+
+// Conform an item's contents array to its current style's field count —
+// pad with empty entries when growing; ask before discarding non-empty
+// trailing entries when shrinking.
+function conformContentsToStyle(item) {
+  const needed = styleFieldCount(project.data.defs.styles[item.key]);
+  if (item.contents.length < needed) {
+    while (item.contents.length < needed) item.contents.push('');
+  } else if (item.contents.length > needed) {
+    const droppedNonEmpty = item.contents.slice(needed).some(c => (c || '').trim());
+    if (droppedNonEmpty && !confirm(
+      `Le style choisi n'utilise que ${needed} champ(s). Les champs supplémentaires ` +
+      `contiennent du texte qui sera supprimé — continuer ?`)) {
+      return false;
+    }
+    item.contents.length = needed;
+  }
+  return true;
+}
+
+// ── Edit panel (left side; opens while a text item is being edited) ──────
+//
+// One edit button per item, not per field — the panel shows every entry of
+// that item's `contents` at once, each in its own numbered box ("Champ N"),
+// since field *meaning* is defined entirely by the chosen style's TeX
+// template (which #N it substitutes where) and isn't something the app
+// knows or should guess at.
+
+let _editPanelDebounce = null;
+
+// Dispatcher — text items edit their contents fields; gabc and myr items
+// edit the linked file's source in CodeMirror (the .gabc / the .ly).
+function openEditPanel(itemIndex) {
+  const item = project.data.items[itemIndex];
+  if (item.type === 'gabc') { openGabcEditPanel(itemIndex); return; }
+  if (item.type === 'myr') { openLyEditPanel(itemIndex); return; }
+  if (item.type === 'image') { openImageEditPanel(itemIndex); return; }
+  if (item.type !== 'text') return;
+  openTextEditPanel(itemIndex);
+}
+
+function openTextEditPanel(itemIndex) {
+  editing = { itemIndex };
+  const item = project.data.items[itemIndex];
+  const template = project.data.defs.styles[item.key];
+  const panel = document.getElementById('edit-panel');
+  const label = document.getElementById('edit-panel-label');
+  const body = document.getElementById('edit-panel-body');
+
+  label.textContent = 'Texte';
+  body.innerHTML = '';
+
+  const styleField = document.createElement('div');
+  styleField.className = 'edit-field';
+  const styleLabel = document.createElement('div');
+  styleLabel.className = 'edit-field-label';
+  styleLabel.textContent = 'Style';
+  styleField.appendChild(styleLabel);
+  const select = document.createElement('select');
+  select.id = 'edit-panel-style-select';
+  Object.keys(project.data.defs.styles).forEach(key => {
+    const opt = document.createElement('option');
+    opt.value = key; opt.textContent = key;
+    if (key === item.key) opt.selected = true;
+    select.appendChild(opt);
+  });
+  select.addEventListener('change', () => {
+    const previousKey = item.key;
+    item.key = select.value;
+    if (!conformContentsToStyle(item)) { item.key = previousKey; select.value = previousKey; return; }
+    markDirty();
+    openEditPanel(itemIndex); // rebuild the field boxes for the new style's field count (also re-renders the list)
+  });
+  styleField.appendChild(select);
+  body.appendChild(styleField);
+
+  const schedulePreviewUpdate = () => {
+    clearTimeout(_editPanelDebounce);
+    _editPanelDebounce = setTimeout(() => {
+      const preview = document.querySelector(`.item-text-preview[data-item-index="${itemIndex}"]`);
+      if (preview) updateTextPreview(preview, template, item.contents);
+    }, 300);
+  };
+
+  item.contents.forEach((text, fieldIndex) => {
+    const field = document.createElement('div');
+    field.className = 'edit-field';
+
+    const label2 = document.createElement('div');
+    label2.className = 'edit-field-label';
+    label2.textContent = item.contents.length > 1 ? `Champ ${fieldIndex + 1}` : 'Texte';
+    field.appendChild(label2);
+
+    const box = document.createElement('div');
+    box.className = 'edit-field-box';
+    box.contentEditable = 'true';
+    box.textContent = text || '';
+    box.addEventListener('input', () => {
+      item.contents[fieldIndex] = box.textContent;
+      markDirty();
+      schedulePreviewUpdate();
+    });
+    field.appendChild(box);
+
+    body.appendChild(field);
+  });
+
+  panel.classList.add('open');
+  const firstBox = body.querySelector('.edit-field-box');
+  if (firstBox) firstBox.focus();
+
+  renderItemList();
+}
+
+// ── Image edit panel (width + non-destructive crop) ──────────────────────
+//
+// Unlike gabc/ly, an image item's adjustments (display width, crop margins)
+// live in the project JSON, not in the linked file — so this panel edits the
+// item directly (like the text panel) and never touches the image on disk.
+// Crop is stored as four 0–1 fractions {left,top,right,bottom} of the
+// image's own dimensions, matching the adjustbox `trim` the exporter emits;
+// the shaded bands over the preview show exactly what will be trimmed away.
+function openImageEditPanel(itemIndex) {
+  const item = project.data.items[itemIndex];
+  if (!item.file_path) return;
+  _teardownFilePanel(); // a gabc/ly panel may be open — flush it first
+  editing = { itemIndex };
+  const panel = document.getElementById('edit-panel');
+  const body = document.getElementById('edit-panel-body');
+  document.getElementById('edit-panel-label').textContent = 'Image';
+  body.innerHTML = '';
+
+  if (!item.crop) item.crop = { left: 0, top: 0, right: 0, bottom: 0 };
+  if (typeof item.width !== 'number') item.width = 1;
+  const clamp01 = v => Math.min(Math.max(v, 0), 1);
+
+  const pathDiv = document.createElement('div');
+  pathDiv.className = 'edit-file-path';
+  pathDiv.textContent = item.file_path;
+  pathDiv.title = item.file_path;
+  body.appendChild(pathDiv);
+
+  // Width slider (fraction of the text column, matching width=Nlinewidth).
+  const widthField = document.createElement('div');
+  widthField.className = 'edit-field';
+  const widthLabel = document.createElement('div');
+  widthLabel.className = 'edit-field-label';
+  const widthPct = () => Math.round(item.width * 100) + ' % de la largeur du texte';
+  widthLabel.textContent = 'Largeur : ' + widthPct();
+  widthField.appendChild(widthLabel);
+  const widthInput = document.createElement('input');
+  widthInput.type = 'range';
+  widthInput.min = '10'; widthInput.max = '100'; widthInput.step = '1';
+  widthInput.value = String(Math.round(item.width * 100));
+  widthInput.style.width = '100%';
+  widthField.appendChild(widthInput);
+
+  // Soft print-resolution hint for raster images: PDF is vector (no DPI to
+  // warn about), so this only applies to PNG/JPEG. Estimated live because it
+  // depends on the width fraction the user is choosing right now. naturalW is
+  // filled in once the preview <img> loads; until then the hint stays hidden.
+  const ext = (item.file_path.split('.').pop() || '').toLowerCase();
+  const isRaster = ext === 'png' || ext === 'jpg' || ext === 'jpeg';
+  const dpiHint = document.createElement('div');
+  dpiHint.className = 'edit-dpi-hint';
+  dpiHint.style.display = 'none';
+  widthField.appendChild(dpiHint);
+  let _naturalW = 0;
+  const updateDpiHint = () => {
+    if (!isRaster || !_naturalW) { dpiHint.style.display = 'none'; return; }
+    // Account for the crop: only the kept horizontal fraction is printed, so
+    // fewer pixels span the same width when cropped tighter.
+    const keptFrac = Math.max(1 - (item.crop.left + item.crop.right), 0.05);
+    const printedMm = item.width * _columnWidthMm();
+    const dpi = (_naturalW * keptFrac) / (printedMm / 25.4);
+    if (dpi >= 300) { dpiHint.style.display = 'none'; return; }
+    dpiHint.style.display = '';
+    dpiHint.textContent = '⚠ Résolution d\'impression estimée à ~'
+      + Math.round(dpi) + ' PPP à cette largeur (300 PPP recommandés) — '
+      + 'l\'image risque d\'être pixelisée à l\'impression. Réduisez sa largeur '
+      + 'ou utilisez un fichier de meilleure définition (ou un PDF vectoriel).';
+  };
+  widthInput.addEventListener('input', () => {
+    item.width = clamp01(parseInt(widthInput.value, 10) / 100);
+    widthLabel.textContent = 'Largeur : ' + widthPct();
+    updateDpiHint();
+    markDirty();
+  });
+  body.appendChild(widthField);
+
+  // Crop: a live preview with four draggable edge handles.
+  const cropField = document.createElement('div');
+  cropField.className = 'edit-field';
+  const cropLabel = document.createElement('div');
+  cropLabel.className = 'edit-field-label';
+  cropLabel.textContent = 'Recadrage — glisser les bords ; la zone sombre est rognée';
+  cropField.appendChild(cropLabel);
+
+  const wm = document.createElement('div');
+  wm.className = 'edit-image-wm';
+  const frame = document.createElement('div');
+  frame.className = 'edit-image-frame';
+  const img = new Image();
+  const shades = {};
+  const handles = {};
+  ['left', 'right', 'top', 'bottom'].forEach(side => {
+    const s = document.createElement('div');
+    s.className = 'edit-crop-shade ' + side;
+    frame.appendChild(s); shades[side] = s;
+    const h = document.createElement('div');
+    h.className = 'edit-crop-handle ' + side;
+    frame.appendChild(h); handles[side] = h;
+  });
+  const applyCropToDom = () => {
+    const c = item.crop;
+    shades.left.style.width = (c.left * 100) + '%';
+    shades.right.style.width = (c.right * 100) + '%';
+    shades.top.style.height = (c.top * 100) + '%';
+    shades.bottom.style.height = (c.bottom * 100) + '%';
+    handles.left.style.left = (c.left * 100) + '%';
+    handles.right.style.right = (c.right * 100) + '%';
+    handles.top.style.top = (c.top * 100) + '%';
+    handles.bottom.style.bottom = (c.bottom * 100) + '%';
+  };
+  img.onload = () => { _naturalW = img.naturalWidth; applyCropToDom(); updateDpiHint(); };
+  img.onerror = () => {
+    frame.insertAdjacentHTML('beforeend',
+      '<span class="preview-placeholder">Aperçu indisponible</span>');
+  };
+  img.src = '/api/image-preview?path=' + encodeURIComponent(item.file_path);
+  frame.insertBefore(img, frame.firstChild);
+
+  // Drag a handle: left/right move as fractions from their edge, capped so
+  // opposite margins can't cross (leave at least 5 % of the image visible).
+  const startDrag = side => e => {
+    e.preventDefault();
+    const rect = frame.getBoundingClientRect();
+    const move = ev => {
+      const px = (ev.touches ? ev.touches[0] : ev);
+      let f;
+      if (side === 'left')   f = clamp01((px.clientX - rect.left) / rect.width);
+      if (side === 'right')  f = clamp01((rect.right - px.clientX) / rect.width);
+      if (side === 'top')    f = clamp01((px.clientY - rect.top) / rect.height);
+      if (side === 'bottom') f = clamp01((rect.bottom - px.clientY) / rect.height);
+      const opp = { left: 'right', right: 'left', top: 'bottom', bottom: 'top' }[side];
+      f = Math.min(f, 0.95 - item.crop[opp]);
+      if (f < 0) f = 0;
+      item.crop[side] = f;
+      applyCropToDom();
+      if (side === 'left' || side === 'right') updateDpiHint();
+      markDirty();
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      window.removeEventListener('touchmove', move);
+      window.removeEventListener('touchend', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    window.addEventListener('touchmove', move, { passive: false });
+    window.addEventListener('touchend', up);
+  };
+  ['left', 'right', 'top', 'bottom'].forEach(side => {
+    handles[side].addEventListener('mousedown', startDrag(side));
+    handles[side].addEventListener('touchstart', startDrag(side), { passive: false });
+  });
+
+  wm.appendChild(frame);
+  cropField.appendChild(wm);
+
+  const resetRow = document.createElement('div');
+  resetRow.className = 'edit-file-actions';
+  const resetBtn = document.createElement('button');
+  resetBtn.className = 'btn btn-sm';
+  resetBtn.textContent = 'Réinitialiser le recadrage';
+  resetBtn.addEventListener('click', () => {
+    item.crop = { left: 0, top: 0, right: 0, bottom: 0 };
+    applyCropToDom();
+    updateDpiHint();
+    markDirty();
+  });
+  resetRow.appendChild(resetBtn);
+  cropField.appendChild(resetRow);
+  body.appendChild(cropField);
+
+  panel.classList.add('open');
+  renderItemList();
+}
+
+// ── Linked-file source editing in the panel (gabc + ly) ──────────────────
+//
+// The music lives in the linked .gabc/.ly file, not in the project JSON,
+// so the panel edits the file itself. Saves are automatic (debounced
+// after typing stops, flushed on panel close and project save) — simpler
+// and safer for non-technical users than a dirty-flag they have to
+// notice; the Phase 7 undo stack is the planned answer to "saved
+// something I regret". One panel state for both kinds so the flush hooks
+// don't have to know which editor is open; `kind` selects the preview
+// path (exsurge live while typing for gabc, debounced lilypond compile
+// for ly).
+
+let _filePanel = null;  // { kind: 'gabc'|'ly', itemIndex, path, cm, dirty, status, saveTimer, previewTimer }
+
+async function openGabcEditPanel(itemIndex) {
+  const item = project.data.items[itemIndex];
+  if (!item.file_path) return;
+  const res = await api('/api/linked-file?path=' + encodeURIComponent(item.file_path));
+  if (res.error) { alert('Impossible d\'ouvrir le fichier : ' + res.error); return; }
+  _teardownFilePanel(); // another linked file may be open — flush its edits first
+
+  editing = { itemIndex };
+  const panel = document.getElementById('edit-panel');
+  const body = document.getElementById('edit-panel-body');
+  document.getElementById('edit-panel-label').textContent = 'Chant (GABC)';
+  body.innerHTML = '';
+
+  const pathDiv = document.createElement('div');
+  pathDiv.className = 'edit-file-path';
+  pathDiv.textContent = item.file_path;
+  pathDiv.title = item.file_path;
+  body.appendChild(pathDiv);
+
+  const cmHost = document.createElement('div');
+  body.appendChild(cmHost);
+
+  const actions = document.createElement('div');
+  actions.className = 'edit-file-actions';
+  const status = document.createElement('span');
+  status.className = 'edit-file-status';
+  status.textContent = 'Enregistrement automatique';
+  actions.appendChild(status);
+  body.appendChild(actions);
+
+  const cm = CodeMirror(cmHost, {
+    value: res.content,
     lineNumbers: true,
     lineWrapping: true,
     indentWithTabs: false,
     tabSize: 2,
   });
+  _filePanel = { kind: 'gabc', itemIndex, path: item.file_path, cm, dirty: false, status,
+                 saveTimer: null, previewTimer: null };
+
+  // Paren helpers, proven in the old editor: typing '(' wraps the
+  // selection or auto-closes; typing ')' just moves over an existing ')'.
   cm.on('change', (instance, change) => {
-    if (loading) return;
     if (change.origin === '+input' && change.text.length === 1 && change.text[0] === '(') {
       const hadSelection = change.from.line !== change.to.line || change.from.ch !== change.to.ch;
       if (hadSelection) {
         const selected = change.removed.join('\n');
-        const cur = cm.getCursor();
-        cm.replaceRange('(' + selected + ')', change.from, cur);
+        cm.replaceRange('(' + selected + ')', change.from, cm.getCursor());
       } else {
         const cur = cm.getCursor();
         cm.replaceRange(')', cur);
         cm.setCursor(cur);
       }
     }
-    if (!isDirty) { isDirty = true; updateTitle(); }
-    clearTimeout(previewTimer);
-    previewTimer = setTimeout(refreshPreview, 700);
+    if (change.origin === 'setValue') return;
+    _filePanel.dirty = true;
+    status.textContent = 'Modifié — enregistrement…';
+    status.classList.add('dirty');
+    clearTimeout(_filePanel.saveTimer);
+    _filePanel.saveTimer = setTimeout(_saveFilePanel, 1200);
+    clearTimeout(_filePanel.previewTimer);
+    _filePanel.previewTimer = setTimeout(() => {
+      const preview = document.querySelector(`.item-gabc-preview[data-item-index="${itemIndex}"]`);
+      if (preview) requestGabcRender(preview, cm.getValue(), _filePanel.path);
+    }, 700);
   });
   cm.on('beforeChange', (instance, change) => {
     if (change.origin !== '+input') return;
@@ -691,282 +1603,673 @@ function initEditor() {
     const line = cm.getLine(change.from.line);
     if (line[change.from.ch] === ')') {
       change.cancel();
-      setTimeout(() => cm.setCursor({line: change.from.line, ch: change.from.ch + 1}), 0);
+      setTimeout(() => cm.setCursor({ line: change.from.line, ch: change.from.ch + 1 }), 0);
     }
   });
+
+  panel.classList.add('open');
+  renderItemList();
+  setTimeout(() => { cm.refresh(); cm.focus(); }, 0); // CodeMirror measures wrong while the panel is still opening
 }
 
-async function loadTree() {
-  const tree = await api('/api/tree');
-  const container = document.getElementById('tree');
-  container.innerHTML = '';
-  if (!tree.length) {
-    container.innerHTML = '<div style="color:rgba(255,255,255,0.3);font-size:0.8em;padding:1em 0.8em">Aucun fichier .gabc trouvé</div>';
-    return;
+async function _saveFilePanel() {
+  if (!_filePanel || !_filePanel.dirty) return true;
+  const p = _filePanel;
+  clearTimeout(p.saveTimer);
+  const res = await api('/api/linked-file', 'POST', { path: p.path, content: p.cm.getValue() });
+  if (res.error) {
+    p.status.textContent = '✗ Échec de l\'enregistrement : ' + res.error;
+    p.status.classList.add('dirty');
+    return false;
   }
-  renderNodes(tree, container);
-  if (currentFile) highlightTreeItem(currentFile.path);
+  p.dirty = false;
+  p.status.textContent = '✓ Enregistré à ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  p.status.classList.remove('dirty');
+  // Invalidate the card preview cache so the next render re-reads the
+  // saved file (the ly PNG cache is also refreshed directly on each
+  // successful panel recompile — this covers saves without a recompile).
+  if (p.kind === 'gabc') _gabcSvgCache.delete(p.path);
+  return true;
 }
 
-function renderNodes(items, container) {
-  for (const item of items) {
-    if (item.type === 'folder') {
-      const folderEl = document.createElement('div');
-      folderEl.className = 'tree-folder';
-      const arrow = document.createElement('span');
-      arrow.className = 'tree-arrow open';
-      arrow.textContent = '▶';
-      folderEl.appendChild(arrow);
-      folderEl.appendChild(document.createTextNode(item.name));
-      container.appendChild(folderEl);
-
-      const childWrap = document.createElement('div');
-      childWrap.className = 'tree-children';
-      renderNodes(item.children, childWrap);
-      container.appendChild(childWrap);
-
-      folderEl.addEventListener('click', () => {
-        const isOpen = childWrap.style.display !== 'none';
-        childWrap.style.display = isOpen ? 'none' : '';
-        arrow.classList.toggle('open', !isOpen);
-      });
-
-      folderEl.addEventListener('dragover', e => {
-        e.preventDefault(); e.stopPropagation();
-        e.dataTransfer.dropEffect = 'move';
-        folderEl.classList.add('drop-target');
-      });
-      folderEl.addEventListener('dragleave', e => {
-        if (!folderEl.contains(e.relatedTarget)) folderEl.classList.remove('drop-target');
-      });
-      folderEl.addEventListener('drop', e => {
-        e.preventDefault(); e.stopPropagation();
-        folderEl.classList.remove('drop-target');
-        const src = e.dataTransfer.getData('text/plain');
-        if (src) moveFile(src, item.path);
-      });
-    } else {
-      const el = document.createElement('div');
-      el.className = 'tree-item';
-      el.dataset.path = item.path;
-
-      const icon = document.createElement('span');
-      icon.className = 'tree-icon';
-      icon.textContent = '♩';
-      el.appendChild(icon);
-
-      const name = document.createElement('span');
-      name.className = 'tree-name';
-      name.textContent = item.name.replace(/\.gabc$/, '');
-      el.appendChild(name);
-
-      if (item.pdf) {
-        const badge = document.createElement('span');
-        badge.className = 'tree-pdf-btn';
-        badge.textContent = 'pdf';
-        badge.title = 'Ouvrir le PDF';
-        badge.addEventListener('click', e => {
-          e.stopPropagation();
-          api('/api/open-pdf', 'POST', { path: item.pdf });
-        });
-        el.appendChild(badge);
-      }
-
-      el.draggable = true;
-      el.addEventListener('dragstart', e => {
-        e.dataTransfer.setData('text/plain', item.path);
-        e.dataTransfer.effectAllowed = 'move';
-        setTimeout(() => el.classList.add('dragging'), 0);
-      });
-      el.addEventListener('dragend', () => {
-        el.classList.remove('dragging');
-        document.querySelectorAll('.drop-target').forEach(t => t.classList.remove('drop-target'));
-      });
-
-      el.addEventListener('click', () => openFile(item.path, item.name));
-      container.appendChild(el);
-    }
-  }
+// Flush + drop the panel state (the DOM is rebuilt by whoever opens the
+// panel next; closeEditPanel hides it). Fire-and-forget on purpose: the
+// save also re-fires from saveProject and export, so a lost race here
+// can't lose data, only delay it.
+function _teardownFilePanel() {
+  if (!_filePanel) return;
+  clearTimeout(_filePanel.saveTimer);
+  clearTimeout(_filePanel.previewTimer);
+  if (_filePanel.dirty) _saveFilePanel();
+  _filePanel = null;
 }
 
-async function moveFile(srcPath, dstFolder) {
-  const srcFolder = srcPath.includes('/') ? srcPath.slice(0, srcPath.lastIndexOf('/')) : '';
-  if (srcFolder === dstFolder) return;
-  const res = await api('/api/move', 'POST', { src: srcPath, dst_folder: dstFolder });
-  if (res.error) { alert('Impossible de déplacer le fichier : ' + res.error); return; }
-  if (currentFile && currentFile.path === srcPath) {
-    currentFile = { path: res.new_path, name: currentFile.name };
-    updateTitle();
-  }
-  await loadTree();
-}
+// ── .ly source editing in the panel (Phase 4) ────────────────────────────
+//
+// Same autosave pattern as gabc, but the preview is a real lilypond
+// compile: auto-recompile a while after typing stops (longer debounce
+// than gabc's — each run costs seconds) plus an explicit button. The
+// compile sends the editor buffer directly, so unsaved text previews
+// correctly; the in-flight guard collapses keystrokes during a compile
+// into one follow-up run instead of stacking lilypond processes.
 
-async function openFile(path, name) {
-  if (isDirty && !confirm('Des modifications non enregistrées existent. Ouvrir un autre fichier quand même ?')) return;
-  const res = await api(`/api/file?path=${encodeURIComponent(path)}`);
+let _lyPanelBusy = false;
+let _lyPanelAgain = false;
+
+async function openLyEditPanel(itemIndex) {
+  const item = project.data.items[itemIndex];
+  if (!item.file_path) return;
+  const res = await api('/api/linked-file?path=' + encodeURIComponent(item.file_path));
   if (res.error) { alert('Impossible d\'ouvrir le fichier : ' + res.error); return; }
+  _teardownFilePanel();
 
-  currentFile = { path, name };
+  editing = { itemIndex };
+  const panel = document.getElementById('edit-panel');
+  const body = document.getElementById('edit-panel-body');
+  document.getElementById('edit-panel-label').textContent = 'Polyphonie (LilyPond)';
+  body.innerHTML = '';
 
-  // Load content without triggering the dirty flag
-  loading = true;
-  cm.setValue(res.content);
-  cm.clearHistory();
-  loading = false;
-  isDirty = false;
+  const pathDiv = document.createElement('div');
+  pathDiv.className = 'edit-file-path';
+  pathDiv.textContent = item.file_path;
+  pathDiv.title = item.file_path;
+  body.appendChild(pathDiv);
 
-  // Enable "Open PDF" if the server found a current PDF
-  currentPdfRel = res.pdf ? res.pdf.rel : null;
-  document.getElementById('btn-open-pdf').disabled = !currentPdfRel;
+  const cmHost = document.createElement('div');
+  body.appendChild(cmHost);
 
-  updateTitle();
-  highlightTreeItem(path);
-  refreshPreview();
+  const actions = document.createElement('div');
+  actions.className = 'edit-file-actions';
+  const recompileBtn = document.createElement('button');
+  recompileBtn.className = 'btn btn-sm';
+  recompileBtn.textContent = 'Recompiler l\'aperçu';
+  recompileBtn.title = 'L\'aperçu se recompile aussi tout seul quelques secondes après la fin de la saisie';
+  recompileBtn.addEventListener('click', () => _compileLyPanelPreview());
+  actions.appendChild(recompileBtn);
+  const status = document.createElement('span');
+  status.className = 'edit-file-status';
+  status.textContent = 'Enregistrement automatique';
+  actions.appendChild(status);
+  body.appendChild(actions);
 
-  document.getElementById('log-output').innerHTML = '';
-  document.getElementById('log-output').classList.remove('visible');
-  document.getElementById('log-arrow').classList.remove('open');
-}
-
-function updateTitle() {
-  const label = document.getElementById('file-label');
-  label.textContent = currentFile
-    ? (isDirty ? '● ' : '') + currentFile.path
-    : 'Aucun fichier sélectionné';
-}
-
-function highlightTreeItem(path) {
-  document.querySelectorAll('.tree-item').forEach(el => {
-    el.classList.toggle('active', el.dataset.path === path);
+  const cm = CodeMirror(cmHost, {
+    value: res.content,
+    lineNumbers: true,
+    lineWrapping: true,
+    indentWithTabs: false,
+    tabSize: 2,
   });
+  _filePanel = { kind: 'ly', itemIndex, path: item.file_path, cm, dirty: false, status,
+                 saveTimer: null, previewTimer: null };
+
+  cm.on('change', (instance, change) => {
+    if (change.origin === 'setValue') return;
+    _filePanel.dirty = true;
+    status.textContent = 'Modifié — enregistrement…';
+    status.classList.add('dirty');
+    clearTimeout(_filePanel.saveTimer);
+    _filePanel.saveTimer = setTimeout(_saveFilePanel, 1200);
+    clearTimeout(_filePanel.previewTimer);
+    _filePanel.previewTimer = setTimeout(_compileLyPanelPreview, 2500);
+  });
+
+  panel.classList.add('open');
+  renderItemList();
+  setTimeout(() => { cm.refresh(); cm.focus(); }, 0); // CodeMirror measures wrong while the panel is still opening
 }
 
-function updateFolderLink() {
-  const label = document.getElementById('folder-label');
-  const btn = document.getElementById('folder-link');
-  const name = gabcRoot ? gabcRoot.split(/[\\/]/).filter(Boolean).pop() || gabcRoot : 'Fichiers de chant';
-  label.textContent = name;
-  btn.title = gabcRoot || 'Sélectionner un dossier GABC';
-}
-
-async function newFile() {
-  if (!gabcRoot) { alert('Sélectionnez d\'abord un dossier GABC.'); return; }
-  const name = prompt('Nom du fichier (sans extension) :');
-  if (!name || !name.trim()) return;
-  const base = name.trim().replace(/\.gabc$/i, '');
-  const relPath = base + '.gabc';
-  const initial = `name: ${base};\n%%\n`;
-  const res = await api('/api/save', 'POST', { path: relPath, content: initial });
-  if (res.error) { alert('Impossible de créer le fichier : ' + res.error); return; }
-  await loadTree();
-  openFile(relPath, relPath);
-}
-
-async function openCurrentFolder() {
-  const res = await _browseApi('/api/browse-folder');
-  if (!res || !res.path) return;
-  gabcRoot = res.path;
-  const settings = await api('/api/settings');
-  const updated = Object.assign({}, settings, { gabc_root: gabcRoot });
-  await api('/api/settings', 'POST', updated);
-  updateFolderLink();
-  loadTree();
-}
-
-function gabcForPreview(gabc, sepIdx) {
-  const header = sepIdx !== -1 ? gabc.slice(0, sepIdx + 2) : '';
-  const body   = sepIdx !== -1 ? gabc.slice(sepIdx + 2) : gabc;
-  const lastParen = body.lastIndexOf(')');
-  if (lastParen === -1) return header + body.replace(/\(/g, '');
-  // Strip unmatched ( in the neume section — any ( with no ) before the next (
-  const safeHead = body.slice(0, lastParen + 1).replace(/\([^)]*(?=\(|$)/g, '');
-  // In the tail every ( is unmatched by definition; also cap length
-  const tail = body.slice(lastParen + 1);
-  const safeTail = (tail.length > 100 ? tail.slice(0, 100) + '…' : tail).replace(/\(/g, '');
-  return header + safeHead + safeTail;
-}
-
-function refreshPreview() {
-  const preview = document.getElementById('preview');
-  if (!currentFile) {
-    preview.innerHTML = '<span class="preview-placeholder">Sélectionner un fichier .gabc pour prévisualiser</span>';
-    return;
-  }
-  const gabc = cm.getValue();
-  const sepIdx = gabc.indexOf('%%');
-  const body = sepIdx !== -1 ? gabc.slice(sepIdx + 2) : gabc;
-  if (!body.includes('(') || !body.includes(')')) {
-    preview.innerHTML = '<span class="preview-placeholder">Aucune notation neumatique détectée</span>';
-    return;
-  }
-  const gen = ++_previewGen;
-  const width = Math.max((preview.clientWidth || 600) - 24, 80);
-  preview.innerHTML = '<span class="preview-placeholder">Rendu en cours…</span>';
-  _worker.postMessage({ gabc: gabcForPreview(gabc, sepIdx), width, gen });
-}
-
-async function saveFile() {
-  if (!currentFile) return;
-  const res = await api('/api/save', 'POST', { path: currentFile.path, content: cm.getValue() });
-  if (res.error) { alert('Échec de l\'enregistrement : ' + res.error); return; }
-  isDirty = false;
-  currentPdfRel = null;
-  document.getElementById('btn-open-pdf').disabled = true;
-  updateTitle();
-}
-
-async function compileFile() {
-  if (!currentFile) { alert('Aucun fichier sélectionné.'); return; }
-  await saveFile();
-
-  const btnCompile = document.getElementById('btn-compile');
-  const logOutput = document.getElementById('log-output');
-  const logArrow = document.getElementById('log-arrow');
-
-  btnCompile.disabled = true;
-  btnCompile.textContent = 'Compilation…';
-  logOutput.className = 'visible';
-  logArrow.classList.add('open');
-  logOutput.innerHTML = '<span class="log-spin">Lancement de lualatex…</span>\n';
-
-  try {
-    const res = await api('/api/compile', 'POST', { path: currentFile.path });
-
-    if (res.success) {
-      logOutput.innerHTML += `<span class="log-ok">✓ PDF généré : ${res.pdf_rel}</span>\n\n`;
-      currentPdfRel = res.pdf_rel;
-      document.getElementById('btn-open-pdf').disabled = false;
-      loadTree();
-    } else {
-      logOutput.innerHTML += `<span class="log-err">✗ Échec (code ${res.returncode})</span>\n\n`;
+async function _compileLyPanelPreview() {
+  if (!_filePanel || _filePanel.kind !== 'ly') return;
+  if (_lyPanelBusy) { _lyPanelAgain = true; return; }
+  const p = _filePanel;
+  const targets = _lyPreviewEls(p.path);
+  targets.forEach(el => {
+    // Keep the stale image visible; only show text when there is none yet.
+    if (!el.querySelector('img')) {
+      el.innerHTML = '<span class="preview-placeholder">Compilation de la partition…</span>';
     }
-
-    if (res.log) {
-      // Show last 60 lines — most relevant errors appear at the end
-      const lines = res.log.split('\n').filter(l => l.trim());
-      logOutput.innerHTML += esc(lines.slice(-60).join('\n'));
+  });
+  _lyPanelBusy = true;
+  try {
+    const res = await api('/api/ly-preview', 'POST',
+      { path: p.path, content: p.cm.getValue(), staffsize: _projectStaffsize(), font: _projectLyFont() });
+    if (res.ok) {
+      _lyPngCache.set(p.path, res.png);
+      _lyPreviewEls(p.path).forEach(el => _setLyPreviewImg(el, res.png));
+    } else {
+      const first = (res.error || 'erreur inconnue').split('\n')[0];
+      // Surface the error where the user is looking (the panel status
+      // line), without blanking a still-useful stale preview image.
+      if (_filePanel && _filePanel.path === p.path) {
+        _filePanel.status.textContent = '✗ Aperçu : ' + first;
+        _filePanel.status.classList.add('dirty');
+      }
+      _lyPreviewEls(p.path).forEach(el => {
+        if (!el.querySelector('img')) {
+          el.innerHTML = '<span class="preview-placeholder">Compilation impossible : ' + esc(first) + '</span>';
+        }
+      });
     }
   } finally {
-    btnCompile.disabled = false;
-    btnCompile.textContent = 'Exporter en PDF';
+    _lyPanelBusy = false;
+    if (_lyPanelAgain) { _lyPanelAgain = false; _compileLyPanelPreview(); }
   }
 }
 
-function openPdf() {
-  if (!currentPdfRel) return;
-  api('/api/open-pdf', 'POST', { path: currentPdfRel });
+function closeEditPanel() {
+  _teardownFilePanel();
+  editing = null;
+  document.getElementById('edit-panel').classList.remove('open');
+  if (project) renderItemList(); // guards Escape/loadProject calls before any project is open
+}
+
+function renderItemList() {
+  const container = document.getElementById('item-list');
+  container.innerHTML = '';
+  const items = project.data.items;
+
+  if (!items.length) {
+    const empty = document.createElement('div');
+    empty.id = 'item-list-empty';
+    empty.textContent = 'Ce bréviaire est vide — ajoutez un élément ci-dessous.';
+    container.appendChild(empty);
+  }
+
+  items.forEach((item, i) => container.appendChild(renderItemCard(item, i)));
+
+  const addBar = document.createElement('div');
+  addBar.className = 'add-item-bar';
+  addBar.innerHTML = `
+    <button class="btn btn-sm" onclick="addItem('text')">+ Texte</button>
+    <button class="btn btn-sm" onclick="addItem('gabc')">+ Chant (GABC)</button>
+    <button class="btn btn-sm" onclick="addItem('myr')">+ Polyphonie</button>
+    <button class="btn btn-sm" onclick="addItem('image')">+ Image</button>
+  `;
+  container.appendChild(addBar);
+}
+
+function renderItemCard(item, index) {
+  const card = document.createElement('div');
+  card.className = 'item-card';
+  card.dataset.index = index;
+  card.draggable = false; // only the handle initiates drag
+
+  const sideBar = document.createElement('div');
+  sideBar.className = 'item-side-bar';
+
+  const handle = document.createElement('button');
+  handle.className = 'item-drag-handle';
+  handle.textContent = '⋮⋮';
+  handle.title = 'Glisser pour réordonner';
+  handle.draggable = true;
+  handle.addEventListener('dragstart', e => {
+    _dragFromIndex = index;
+    e.dataTransfer.effectAllowed = 'move';
+    setTimeout(() => card.classList.add('dragging'), 0);
+  });
+  handle.addEventListener('dragend', () => {
+    card.classList.remove('dragging');
+    document.querySelectorAll('.drop-target').forEach(el => el.classList.remove('drop-target'));
+  });
+  sideBar.appendChild(handle);
+
+  const add = document.createElement('button');
+  add.textContent = '+';
+  add.title = 'Ajouter un élément de texte au-dessus';
+  add.addEventListener('click', e => { e.stopPropagation(); insertTextItemBefore(index); });
+  sideBar.appendChild(add);
+
+  const del = document.createElement('button');
+  del.className = 'item-delete-btn';
+  del.textContent = '×';
+  del.title = 'Supprimer';
+  del.addEventListener('click', e => { e.stopPropagation(); deleteItem(index); });
+  sideBar.appendChild(del);
+
+  card.appendChild(sideBar);
+
+  card.addEventListener('click', e => {
+    if (sideBar.contains(e.target)) return;
+    if (e.target.closest('.item-file-row')) return; // link/open buttons + path row keep their own behaviour
+    if (item.type === 'gabc' || item.type === 'myr' || item.type === 'image') {
+      const status = project.item_status[index] || { missing: [] };
+      if (!item.file_path || status.missing.includes('file_path')) return; // nothing to edit yet
+    }
+    openEditPanel(index);
+  });
+
+  card.addEventListener('dragover', e => {
+    if (_dragFromIndex === null) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    card.classList.add('drop-target');
+  });
+  card.addEventListener('dragleave', () => card.classList.remove('drop-target'));
+  card.addEventListener('drop', e => {
+    e.preventDefault();
+    card.classList.remove('drop-target');
+    if (_dragFromIndex === null || _dragFromIndex === index) return;
+    moveItem(_dragFromIndex, index);
+    _dragFromIndex = null;
+  });
+
+  if (item.type === 'text') {
+    const template = project.data.defs.styles[item.key];
+    // Deliberately no editable box here — only the rendered preview (one
+    // combined render of every field via the style's #1/#2/... template),
+    // so it reads clearly as "a preview," not as if typing directly into
+    // styled output were the same as the real PDF. Clicking anywhere on
+    // the card (except the side bar) opens the edit panel — wired at the
+    // card level above, not here, so it's one listener for the whole card.
+    const preview = document.createElement('div');
+    preview.className = 'item-text-preview item-preview-editable';
+    preview.dataset.itemIndex = index;
+    preview.title = 'Cliquer pour modifier';
+    if (editing && editing.itemIndex === index) {
+      preview.classList.add('item-preview-editing');
+    }
+    card.appendChild(preview);
+    updateTextPreview(preview, template, item.contents);
+  } else if (item.type === 'gabc') {
+    card.appendChild(renderFileRow(item, index, 'file_path', 'Fichier .gabc', 'gabc', false, { createKind: 'gabc' }));
+    const status = project.item_status[index] || { missing: [] };
+    if (item.file_path && !status.missing.includes('file_path')) {
+      const preview = document.createElement('div');
+      preview.className = 'item-gabc-preview';
+      preview.dataset.itemIndex = index;
+      preview.title = 'Cliquer pour modifier le chant';
+      if (editing && editing.itemIndex === index) preview.classList.add('item-preview-editing');
+      card.appendChild(preview);
+      renderGabcCardPreview(preview, item);
+    }
+  } else if (item.type === 'myr') {
+    const status = project.item_status[index] || { missing: [] };
+    const wrap = document.createElement('div');
+    wrap.className = 'item-file-body';
+    // Three distinct roles, kept linguistically separate: the .ly is the
+    // editable score that enters the PDF; MusicXML is the interchange format
+    // it's (re)imported from (any notation program exports it); the optional
+    // source file is the original document the user maintains the music in.
+    wrap.appendChild(renderFileRow(item, index, 'file_path', 'Partition (LilyPond .ly)', 'ly', true, { createKind: 'ly' }));
+    wrap.appendChild(renderFileRow(item, index, 'source_path', 'Fichier source (facultatif)', 'myr', true,
+                                   { openTitle: 'Ouvrir le fichier source dans son application',
+                                     browseUrl: '/api/browse-music-source' }));
+
+    // Import row: MusicXML → .ly conversion (explicit, never automatic —
+    // it overwrites hand-edits), plus the staleness hint when the source
+    // document is newer on disk than the imported .ly.
+    const importRow = document.createElement('div');
+    importRow.className = 'item-file-row';
+    const importBtn = document.createElement('button');
+    importBtn.className = 'btn btn-sm';
+    importBtn.textContent = 'Importer depuis MusicXML…';
+    importBtn.title = 'Convertit un fichier MusicXML (exporté depuis n\'importe quel logiciel '
+      + 'de notation : Harmony Assistant, MuseScore, Sibelius…) en partition LilyPond modifiable';
+    importBtn.addEventListener('click', () => importMusicXml(index));
+    importRow.appendChild(importBtn);
+    if (status.stale) {
+      const stale = document.createElement('span');
+      stale.className = 'item-stale-badge';
+      stale.textContent = 'partition périmée — réimporter ?';
+      stale.title = 'Le fichier source a été modifié après le dernier import : la partition '
+        + 'LilyPond ne reflète peut-être plus la dernière version. Réexportez-le en MusicXML '
+        + 'puis réimportez (vos corrections manuelles au .ly seraient alors écrasées).';
+      importRow.appendChild(stale);
+    }
+    wrap.appendChild(importRow);
+    card.appendChild(wrap);
+
+    if (item.file_path && !status.missing.includes('file_path')) {
+      const preview = document.createElement('div');
+      preview.className = 'item-ly-preview';
+      preview.dataset.itemIndex = index;
+      preview.title = 'Cliquer pour modifier la partition';
+      if (editing && editing.itemIndex === index) preview.classList.add('item-preview-editing');
+      card.appendChild(preview);
+      renderLyCardPreview(preview, item);
+    }
+  } else if (item.type === 'image') {
+    const status = project.item_status[index] || { missing: [] };
+    const wrap = document.createElement('div');
+    wrap.className = 'item-file-body';
+    wrap.appendChild(renderFileRow(item, index, 'file_path', 'Image', 'pdf', true, {
+      browseUrl: '/api/browse-image',
+      accept: ['.pdf', '.png', '.jpg', '.jpeg'],
+      rejectMsg: 'Format non pris en charge. Formats acceptés : PDF, PNG, JPEG. '
+        + 'Pour un dessin vectoriel (SVG, EPS…), exportez-le en PDF depuis votre application.',
+    }));
+    // Optional upstream original (e.g. a .svg the PDF was exported from) so
+    // the generic staleness check can flag "source changed since export".
+    wrap.appendChild(renderFileRow(item, index, 'source_path', 'Fichier source (facultatif)', 'pdf', true,
+                                   { openTitle: 'Ouvrir le fichier source', browseUrl: '/api/browse-image' }));
+    if (status.stale) {
+      const staleRow = document.createElement('div');
+      staleRow.className = 'item-file-row';
+      const stale = document.createElement('span');
+      stale.className = 'item-stale-badge';
+      stale.textContent = 'image périmée — réexporter depuis le fichier source ?';
+      stale.title = 'Le fichier source a été modifié après l\'image liée : celle-ci ne '
+        + 'reflète peut-être plus la dernière version. Réexportez l\'image (PDF/PNG/JPEG) '
+        + 'puis reliez-la.';
+      staleRow.appendChild(stale);
+      wrap.appendChild(staleRow);
+    }
+    card.appendChild(wrap);
+
+    if (item.file_path && !status.missing.includes('file_path')) {
+      const preview = document.createElement('div');
+      preview.className = 'item-image-preview';
+      preview.dataset.itemIndex = index;
+      preview.title = 'Cliquer pour ajuster la taille et le recadrage';
+      if (editing && editing.itemIndex === index) preview.classList.add('item-preview-editing');
+      card.appendChild(preview);
+      renderImageCardPreview(preview, item);
+    }
+  }
+
+  return card;
+}
+
+// Image card preview: PNG/JPEG served raw, PDF rasterised by ghostscript.
+// A cache-busting mtime-ish token isn't needed — relinking rebuilds the DOM
+// with the new path, and the crop/width are applied only in the edit panel
+// (the card shows the whole image so the user sees what they're cropping).
+function renderImageCardPreview(previewEl, item) {
+  const path = item.file_path;
+  previewEl.innerHTML = '<span class="preview-placeholder">Chargement de l\'image…</span>';
+  const img = new Image();
+  img.onload = () => { previewEl.innerHTML = ''; previewEl.appendChild(img); };
+  img.onerror = () => {
+    previewEl.innerHTML = '<span class="preview-placeholder">Aperçu indisponible '
+      + '(format PDF sans ghostscript ?)</span>';
+  };
+  img.src = '/api/image-preview?path=' + encodeURIComponent(path);
+}
+
+// opts: { createKind, openTitle, browseUrl, accept: ['.pdf', …], rejectMsg }
+// — browseUrl overrides the default single-extension dialog; accept is a
+// client-side extension check for dialogs whose « Tous les fichiers »
+// option lets the user pick something the export can't use.
+function renderFileRow(item, index, field, label, ext, wrapped, opts) {
+  opts = opts || {};
+  const createKind = opts.createKind;
+  const status = project.item_status[index] || { missing: [] };
+  const missing = status.missing.includes(field);
+
+  const row = document.createElement(wrapped ? 'div' : 'div');
+  row.className = wrapped ? 'item-file-row' : 'item-file-body item-file-row';
+
+  const lab = document.createElement('span');
+  lab.className = 'item-file-label';
+  lab.textContent = label;
+  row.appendChild(lab);
+
+  const pathSpan = document.createElement('span');
+  pathSpan.className = 'item-file-path' + (item[field] ? '' : ' empty');
+  pathSpan.textContent = item[field] || 'Aucun fichier lié';
+  pathSpan.title = item[field] || '';
+  row.appendChild(pathSpan);
+
+  if (missing) {
+    const badge = document.createElement('span');
+    badge.className = 'item-missing-badge';
+    badge.textContent = 'fichier manquant';
+    row.appendChild(badge);
+  }
+
+  const linkBtn = document.createElement('button');
+  linkBtn.className = 'btn btn-sm';
+  linkBtn.textContent = 'Lier…';
+  linkBtn.addEventListener('click', async () => {
+    const url = opts.browseUrl || ('/api/browse-linked-file?ext=' + encodeURIComponent(ext));
+    const res = await _browseApi(url);
+    if (res && res.path) {
+      if (opts.accept && !opts.accept.some(e => res.path.toLowerCase().endsWith(e))) {
+        alert(opts.rejectMsg || 'Format de fichier non pris en charge.');
+        return;
+      }
+      item[field] = res.path;
+      // A fresh link supersedes an earlier "ignore this missing file".
+      if (item.ignored_missing) item.ignored_missing = item.ignored_missing.filter(f => f !== field);
+      markDirty();
+      // Re-check existence from the server rather than assuming it exists.
+      const reloaded = await api('/api/project?path=' + encodeURIComponent(project.path));
+      if (!reloaded.error) project.item_status = reloaded.item_status;
+      renderItemList();
+    }
+  });
+  row.appendChild(linkBtn);
+
+  if (createKind) {
+    // "Create from scratch" flow (TODO Phase 3): save dialog → server
+    // writes a starter file (gabc header stub / minimal .ly with a low
+    // pinned \version) → linked like an existing file.
+    const newBtn = document.createElement('button');
+    newBtn.className = 'btn btn-sm';
+    newBtn.textContent = 'Nouveau…';
+    newBtn.title = createKind === 'gabc'
+      ? 'Créer un nouveau fichier .gabc vierge et le lier ici'
+      : 'Créer un nouveau fichier .ly vierge et le lier ici';
+    newBtn.addEventListener('click', async () => {
+      const dlg = await _browseApi('/api/browse-linked-save?ext=' + createKind);
+      if (!dlg || !dlg.path) return;
+      const created = await api('/api/linked-file/new', 'POST', { path: dlg.path, kind: createKind });
+      if (created.error) { alert('Création impossible : ' + created.error); return; }
+      item[field] = created.path;
+      markDirty();
+      const reloaded = await api('/api/project?path=' + encodeURIComponent(project.path));
+      if (!reloaded.error) project.item_status = reloaded.item_status;
+      renderItemList();
+      openEditPanel(index); // straight into editing the new file
+    });
+    row.appendChild(newBtn);
+  }
+
+  const openBtn = document.createElement('button');
+  openBtn.className = 'btn btn-sm';
+  openBtn.textContent = 'Ouvrir';
+  if (opts.openTitle) openBtn.title = opts.openTitle;
+  openBtn.disabled = !item[field] || missing;
+  openBtn.addEventListener('click', () => api('/api/open-external', 'POST', { path: item[field] }));
+  row.appendChild(openBtn);
+
+  return row;
+}
+
+// MusicXML → .ly import flow for a myr item (Phase 4): pick the exported
+// MusicXML, pick (or confirm overwriting) the .ly destination, then the
+// server runs musicxml2ly + the post-processing pass (pinned \version,
+// lyric-newline fix, header stripped).
+async function importMusicXml(index) {
+  const item = project.data.items[index];
+  const dlg = await _browseApi('/api/browse-musicxml');
+  if (!dlg || !dlg.path) return;
+  let lyPath = item.file_path;
+  if (lyPath) {
+    if (!confirm('Réimporter écrasera la partition .ly actuelle, y compris '
+        + 'les corrections faites à la main dans son texte. Continuer ?')) return;
+  } else {
+    const save = await _browseApi('/api/browse-linked-save?ext=ly');
+    if (!save || !save.path) return;
+    lyPath = save.path;
+  }
+  const res = await api('/api/myr-import', 'POST', { musicxml_path: dlg.path, ly_path: lyPath });
+  if (res.error) { alert('Import impossible : ' + res.error); return; }
+  item.file_path = res.ly_path; // the server appends .ly to a bare dialog name
+  markDirty();
+  _lyPngCache.delete(res.ly_path);
+  const reloaded = await api('/api/project?path=' + encodeURIComponent(project.path));
+  if (!reloaded.error) project.item_status = reloaded.item_status;
+  renderItemList();
+}
+
+// New text items default to the "body" style if the project still has one,
+// else whatever style comes first — 'body' is only a default key, the user
+// can rename/delete it in the defs editor.
+function defaultStyleKey() {
+  const keys = Object.keys(project.data.defs.styles);
+  return keys.includes('body') ? 'body' : keys[0];
+}
+
+function addItem(type) {
+  const item = { type };
+  if (type === 'text') { item.key = defaultStyleKey(); item.contents = ['']; }
+  if (type === 'gabc') { item.file_path = null; }
+  if (type === 'myr') { item.source_path = null; item.file_path = null; }
+  if (type === 'image') { item.file_path = null; item.source_path = null; item.width = 1; item.crop = { left: 0, top: 0, right: 0, bottom: 0 }; }
+  project.data.items.push(item);
+  project.item_status.push({ missing: [] });
+  markDirty();
+  renderItemList();
+}
+
+function insertTextItemBefore(index) {
+  // The bottom add-bar already covers appending at the end, so a per-item
+  // "+" adds above that item rather than below it.
+  project.data.items.splice(index, 0, { type: 'text', key: defaultStyleKey(), contents: [''] });
+  project.item_status.splice(index, 0, { missing: [] });
+  if (editing && editing.itemIndex >= index) editing.itemIndex++;
+  markDirty();
+  renderItemList();
+}
+
+function deleteItem(index) {
+  if (!confirm('Supprimer cet élément ?')) return;
+  project.data.items.splice(index, 1);
+  project.item_status.splice(index, 1);
+  if (editing && editing.itemIndex === index) closeEditPanel();
+  markDirty();
+  renderItemList();
+}
+
+function moveItem(from, to) {
+  const [moved] = project.data.items.splice(from, 1);
+  project.data.items.splice(to, 0, moved);
+  const [movedStatus] = project.item_status.splice(from, 1);
+  project.item_status.splice(to, 0, movedStatus);
+  // Reordering invalidates any open editing index — simplest safe move is
+  // to close rather than try to track the item across the splice.
+  if (editing) closeEditPanel();
+  markDirty();
+  renderItemList();
+}
+
+// ── Save / export ─────────────────────────────────────────────────────────
+
+async function saveProject() {
+  if (!project) return;
+  // A gabc file being edited in the panel is part of "what the user means
+  // by save" — flush it before (not after) the project write.
+  if (_filePanel && _filePanel.dirty) await _saveFilePanel();
+  const res = await api('/api/project', 'POST', { path: project.path, data: project.data });
+  if (res.error) { alert('Échec de l\'enregistrement : ' + res.error); return; }
+  isDirty = false;
+  updateFileLabel();
+  // Static style checks run server-side at save (never block saving);
+  // surface anything suspicious in the log panel instead of at export time.
+  if (res.style_warnings && res.style_warnings.length) {
+    const logOutput = document.getElementById('log-output');
+    logOutput.classList.add('visible');
+    document.getElementById('log-arrow').classList.add('open');
+    logOutput.innerHTML = '<span class="log-warn">⚠ Avertissements sur les styles (le projet est enregistré, mais l\'export TeX échouera probablement) :</span>\n'
+      + res.style_warnings.map(w => '<span class="log-warn">  · ' + esc(w) + '</span>').join('\n');
+    logOutput.scrollTop = 0;
+  }
+}
+
+function _fmtDate(ts) {
+  // ts is a unix timestamp in seconds (Python os.path.getmtime).
+  if (!ts) return '';
+  try { return new Date(ts * 1000).toLocaleString('fr-FR'); } catch (e) { return ''; }
+}
+
+async function exportPdf(force) {
+  if (!project) return;
+  // The exporter snapshots linked files from disk — unsaved panel edits
+  // must land there first or the PDF would silently lag the screen.
+  if (_filePanel && _filePanel.dirty) await _saveFilePanel();
+  const btn = document.getElementById('btn-export');
+  const logOutput = document.getElementById('log-output');
+  const logArrow = document.getElementById('log-arrow');
+  logOutput.classList.add('visible');
+  logArrow.classList.add('open');
+  logOutput.innerHTML = '<span class="log-spin">Export en cours… (gregorio + lilypond + lualatex, cela peut prendre un moment)</span>\n';
+  btn.disabled = true;
+  btn.textContent = 'Export…';
+  try {
+    // /api/export saves the project server-side first, so what's exported
+    // is exactly what's on screen.
+    const res = await api('/api/export', 'POST', { path: project.path, data: project.data, force: !!force });
+    // Server-side guards that must be confirmed before we spend a compile:
+    // a hand-edited .tex we'd clobber, or a referenced font missing here.
+    if (res.needs_confirm) {
+      btn.disabled = false;
+      btn.textContent = 'Exporter en PDF';
+      let ask;
+      if (res.reason === 'fonts_missing') {
+        const names = (res.fonts || []).map(f => '« ' + f + ' »').join(', ');
+        ask = 'Police(s) introuvable(s) sur cette machine : ' + names
+          + "\n\nL'export échouera probablement (ou substituera une autre police). "
+          + 'Exporter quand même ?';
+      } else {
+        const when = _fmtDate(res.modified_at);
+        ask = 'Le fichier TeX exporté a été modifié à la main depuis le dernier export'
+          + (when ? ' (le ' + when + ')' : '') + ' :\n\n' + res.tex_path
+          + '\n\nRéexporter écrasera ces modifications. Continuer ?';
+      }
+      if (confirm(ask)) return exportPdf(true);
+      logOutput.innerHTML = res.reason === 'fonts_missing'
+        ? '<span class="log-warn">Export annulé — police manquante.</span>\n'
+        : '<span class="log-warn">Export annulé — le fichier TeX modifié à la main a été conservé.</span>\n';
+      return;
+    }
+    isDirty = false;
+    updateFileLabel();
+    if (res.success) {
+      // Keep the in-memory project in step with the export stamp the server
+      // just persisted, so a later plain save doesn't drop it.
+      if (res.last_export) project.data.last_export = res.last_export;
+      logOutput.innerHTML = `<span class="log-ok">✓ PDF généré : ${esc(res.pdf_path)}</span>\n`
+        + `<span class="log-ok">✓ TeX exporté : ${esc(res.tex_path)}</span>\n`;
+      if (res.notice && res.notice.reason === 'missing') {
+        logOutput.innerHTML += `<span class="log-warn">Note : le fichier TeX exporté précédemment `
+          + `était introuvable (${esc(res.notice.tex_path)}) — un nouveau a été écrit.</span>\n`;
+      }
+      _lastExportedPdf = res.pdf_path;
+      api('/api/open-external', 'POST', { path: res.pdf_path });
+    } else {
+      logOutput.innerHTML = `<span class="log-err">✗ Échec de l'export${res.error ? ' : ' + esc(res.error) : ''}</span>\n\n`;
+      if (res.log) {
+        const lines = String(res.log).split('\n').filter(l => l.trim());
+        logOutput.innerHTML += esc(lines.slice(-60).join('\n'));
+      }
+    }
+    logOutput.scrollTop = logOutput.scrollHeight;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Exporter en PDF';
+  }
+}
+
+let _lastExportedPdf = null;
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 // ── Settings modal ───────────────────────────────────────────────────────
 
 async function openSettings() {
   const s = await api('/api/settings');
-  document.getElementById('set-gabc-root').value = s.gabc_root || '';
-  document.getElementById('set-config-file').value = s.config_file || '';
-  document.getElementById('config-file-hint').textContent =
-    s.config_file ? '' : ('Par défaut : ' + (s._default_config_file || ''));
   document.getElementById('set-lualatex').value = s.lualatex_path || '';
+  document.getElementById('set-lilypond').value = s.lilypond_path || '';
   document.getElementById('set-output-folder').value = s.output_folder || '';
+  document.getElementById('set-missing-notes').checked = s.missing_files_in_tex !== false;
+  const defsBtn = document.getElementById('btn-open-defs');
+  defsBtn.disabled = !project;
+  defsBtn.title = project
+    ? 'Format de page, marges et styles de texte du bréviaire ouvert'
+    : 'Ouvrez d\'abord un bréviaire — ces réglages sont enregistrés dans le fichier .breviaire';
   document.getElementById('settings-modal').classList.add('open');
 }
 
@@ -975,15 +2278,15 @@ function closeSettings() {
 }
 
 async function saveSettingsModal() {
-  const s = {
-    gabc_root:     document.getElementById('set-gabc-root').value.trim(),
-    config_file:   document.getElementById('set-config-file').value.trim(),
+  const existing = await api('/api/settings');
+  const s = Object.assign({}, existing, {
     lualatex_path: document.getElementById('set-lualatex').value.trim(),
+    lilypond_path: document.getElementById('set-lilypond').value.trim(),
     output_folder: document.getElementById('set-output-folder').value.trim(),
-  };
+    missing_files_in_tex: document.getElementById('set-missing-notes').checked,
+  });
   await api('/api/settings', 'POST', s);
   closeSettings();
-  loadTree();
 }
 
 async function browseModal(inputId) {
@@ -991,9 +2294,464 @@ async function browseModal(inputId) {
   if (res && res.path) document.getElementById(inputId).value = res.path;
 }
 
-async function browseFileModal(inputId) {
+async function browseFileSetting(inputId) {
   const res = await _browseApi('/api/browse-file');
   if (res && res.path) document.getElementById(inputId).value = res.path;
+}
+
+// ── Defs editor (page geometry + named styles) ───────────────────────────
+//
+// Edits a deep working copy of project.data.defs; nothing touches the real
+// project until "Appliquer". Style renames are tracked back to the key each
+// style had when the modal opened (_defsOrigin), so applying can remap the
+// `key` of every text item in one pass — including chained renames (a→b→c)
+// and the case where a new style reuses a freed-up name.
+//
+// Live validation = the same server-side static checks that run at project
+// save (verifier.check_style_body via POST /api/styles/check), debounced,
+// shown under the textarea being edited. The LaTeX.js preview under each
+// style has the same documented gaps as item previews (no colour / exact
+// size / real fonts) — the hint text in the modal says so.
+
+let _defsDraft = null;      // working copy of project.data.defs
+let _defsOrigin = null;     // current style key → key it had at open (absent for new styles)
+let _defsSnapshot = null;   // JSON of the draft at open, for the discard confirm
+let _defsCheckDebounce = null;
+let _defsCheckToken = 0;
+
+const PAGE_SIZES = [
+  ['a6paper', 'A6 (105 × 148 mm)'],
+  ['a5paper', 'A5 (148 × 210 mm)'],
+  ['a4paper', 'A4 (210 × 297 mm)'],
+  ['b5paper', 'B5 (176 × 250 mm)'],
+  ['letterpaper', 'Letter (216 × 279 mm)'],
+];
+// TeX dimensions the geometry package accepts — loose on purpose (only
+// blocks obvious typos like "1,5cm" or a bare number, not exotic units).
+const TEX_DIM_RE = /^\d+(\.\d+)?\s*(pt|mm|cm|in|bp|em|ex)$/;
+
+// Portrait page widths in mm, for the raster-image print-resolution check.
+const PAGE_WIDTH_MM = {
+  a6paper: 105, a5paper: 148, a4paper: 210, b5paper: 176, letterpaper: 216,
+};
+// Absolute-length TeX units → mm (em/ex depend on the font, so unconvertible
+// here and treated as "unknown"). 1pt = 1/72.27 in; 1bp = 1/72 in.
+const _DIM_MM = { mm: 1, cm: 10, in: 25.4, pt: 25.4 / 72.27, bp: 25.4 / 72 };
+function _texDimToMm(v) {
+  const m = /^(\d+(?:\.\d+)?)\s*(pt|mm|cm|in|bp)$/.exec((v || '').trim());
+  return m ? parseFloat(m[1]) * _DIM_MM[m[2]] : null;
+}
+// Best-effort text-column width in mm from the page defs, so we can estimate
+// the print resolution of a raster image at a given width fraction. Margins
+// are subtracted when given as absolute lengths; when absent we fall back to
+// the geometry package's rough default (~1in per side). Deliberately an
+// approximation — this only drives a soft "image may look pixelated" hint.
+function _columnWidthMm() {
+  const page = (project && project.data.defs.page) || {};
+  const pw = PAGE_WIDTH_MM[page.size] || PAGE_WIDTH_MM.a5paper;
+  const margin = _texDimToMm(page.margin);
+  const gutter = _texDimToMm(page.gutter) || 0;
+  const side = (margin === null) ? 25.4 : margin; // geometry default ≈ 1in
+  return Math.max(pw - 2 * side - gutter, 20);
+}
+
+function openDefsEditor() {
+  if (!project) return;
+  closeSettings();
+  const defs = project.data.defs || {};
+  _defsDraft = {
+    page: Object.assign({}, defs.page),
+    styles: Object.assign({}, defs.styles),
+    music: Object.assign({}, defs.music),
+    typography: Object.assign({}, defs.typography),
+  };
+  _defsOrigin = {};
+  Object.keys(_defsDraft.styles).forEach(k => { _defsOrigin[k] = k; });
+  _defsSnapshot = JSON.stringify(_defsDraft);
+
+  const sizeSel = document.getElementById('defs-page-size');
+  sizeSel.innerHTML = '';
+  const currentSize = _defsDraft.page.size || 'a5paper';
+  const known = PAGE_SIZES.some(([v]) => v === currentSize);
+  (known ? PAGE_SIZES : [[currentSize, currentSize], ...PAGE_SIZES]).forEach(([v, label]) => {
+    const opt = document.createElement('option');
+    opt.value = v; opt.textContent = label;
+    if (v === currentSize) opt.selected = true;
+    sizeSel.appendChild(opt);
+  });
+  document.getElementById('defs-page-margin').value = _defsDraft.page.margin || '';
+  document.getElementById('defs-page-gutter').value = _defsDraft.page.gutter || '';
+  document.getElementById('defs-staffsize').value = (_defsDraft.music.staffsize != null) ? _defsDraft.music.staffsize : 16;
+  document.getElementById('defs-ly-staffsize').value = _defsDraft.music.ly_staffsize || '';
+  document.getElementById('defs-text-size').value = _defsDraft.typography.text_size || '';
+  document.getElementById('defs-french-spacing').value = _defsDraft.typography.french_spacing || 'frpunct';
+  _populateFontPickers();
+
+  renderDefsStyles();
+  document.getElementById('defs-modal').classList.add('open');
+}
+
+// One system-font fetch per modal-open, shared by the three pickers (the
+// endpoint is slow). Reset each open so a font newly installed since last
+// time shows up.
+let _sysFontsPromise = null;
+
+// Fills the three font dropdowns (base text, gabc override, ly override) from
+// the system list. The currently-saved value is always kept as an option even
+// if enumeration fails or the font is no longer installed, so opening the
+// editor never silently drops a choice. gabc/ly use "Comme le texte" as their
+// empty option (inherit the base font = the uniform default).
+async function _populateFontPickers() {
+  _sysFontsPromise = api('/api/available-fonts');
+  const t = _defsDraft.typography;
+  const res = await _populateFontPicker('defs-text-font', t.text_font || '', 'Police par défaut du moteur');
+  await _populateFontPicker('defs-gabc-font', t.gabc_font || '', 'Comme le texte');
+  await _populateFontPicker('defs-ly-font', t.ly_font || '', 'Comme le texte');
+  const fonts = (res && res.fonts) || [];
+  if (!fonts.length) {
+    document.getElementById('defs-font-hint').textContent = res && res.error
+      ? 'Liste des polices indisponible (' + res.error + ') — vous pouvez tout de même saisir un nom via le modèle d\'export.'
+      : 'Aucune police détectée sur ce système.';
+  }
+  _validateFontPick('defs-text-font', 'defs-font-status');
+  _validateFontPick('defs-gabc-font', 'defs-gabc-font-status');
+  _validateFontPick('defs-ly-font', 'defs-ly-font-status');
+}
+
+// Rescan after installing a font mid-session: the server rebuilds luaotfload's
+// index and drops its process-lifetime caches; we then refetch the list and
+// revalidate. Without this, a just-installed font stays invisible until the
+// app is restarted (three cache layers — see the endpoint).
+async function rescanFonts() {
+  const btn = document.getElementById('defs-rescan-btn');
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Analyse…';
+  try {
+    await api('/api/fonts/rescan', 'POST');
+    await _populateFontPickers();
+  } finally {
+    btn.disabled = false; btn.textContent = label;
+  }
+}
+
+async function _populateFontPicker(selectId, current, inheritLabel) {
+  const sel = document.getElementById(selectId);
+  sel.innerHTML = '';
+  const add = (val, label, selected) => {
+    const opt = document.createElement('option');
+    opt.value = val; opt.textContent = label;
+    // Preview each family in its own typeface (styled dropdown). Native
+    // <option> font styling is honoured by Chromium/Electron; webviews that
+    // ignore it just fall back to the select's own font — harmless either way.
+    if (val) opt.style.fontFamily = "'" + val.replace(/'/g, '') + "', serif";
+    if (selected) opt.selected = true;
+    sel.appendChild(opt);
+  };
+  add('', inheritLabel, !current);
+  if (current) add(current, current, true);
+  const res = await _sysFontsPromise;
+  ((res && res.fonts) || []).filter(f => f !== current).forEach(f => add(f, f, false));
+  _reflectPickedFont(selectId);
+  return res;
+}
+
+// Show the selected family in its own font in the closed select box, so the
+// picker reads as a font preview even before it is opened. Empty (inherit)
+// reverts to the editor's UI font.
+function _reflectPickedFont(selectId) {
+  const sel = document.getElementById(selectId);
+  sel.style.fontFamily = sel.value
+    ? "'" + sel.value.replace(/'/g, '') + "', Georgia, serif"
+    : 'Georgia, serif';
+}
+
+// Confirm a picked family actually loads in the TeX engine (not every system
+// font Pango lists resolves in luaotfload by the same name). Per-picker stale-
+// token guard so a slow check on one dropdown can't overwrite another's.
+const _fontCheckTokens = {};
+async function _validateFontPick(selectId, statusId) {
+  const font = document.getElementById(selectId).value;
+  const status = document.getElementById(statusId);
+  status.title = '';
+  if (!font) { status.textContent = ''; return; }
+  const token = (_fontCheckTokens[statusId] = (_fontCheckTokens[statusId] || 0) + 1);
+  status.style.color = '#999';
+  status.textContent = 'vérification…';
+  const res = await api('/api/validate-font', 'POST', { font });
+  if (token !== _fontCheckTokens[statusId]) return;
+  if (res && res.ok) {
+    status.style.color = '#4a7a33';
+    status.textContent = '✓ police OK';
+  } else {
+    status.style.color = '#b3402a';
+    status.textContent = '✗ introuvable';
+    status.title = 'Cette police est listée par le système mais le moteur TeX ne '
+      + 'parvient pas à la charger sous ce nom — l\'export échouerait. Choisissez-en une autre.';
+  }
+}
+
+function _onFontPick(selectId, statusId) {
+  _reflectPickedFont(selectId);
+  _validateFontPick(selectId, statusId);
+}
+
+function closeDefsEditor() {
+  if (!_defsDraft) return;
+  _readDefsPageFields();
+  if (JSON.stringify(_defsDraft) !== _defsSnapshot
+      && !confirm('Abandonner les modifications de mise en page et de styles ?')) return;
+  _defsDraft = null;
+  document.getElementById('defs-modal').classList.remove('open');
+}
+
+// The page/music/typography inputs are plain fields read on demand (unlike
+// styles, which live-update the draft for validation/preview).
+function _readDefsPageFields() {
+  _defsDraft.page.size = document.getElementById('defs-page-size').value;
+  _defsDraft.page.margin = document.getElementById('defs-page-margin').value.trim();
+  _defsDraft.page.gutter = document.getElementById('defs-page-gutter').value.trim();
+  const staff = parseInt(document.getElementById('defs-staffsize').value, 10);
+  _defsDraft.music.staffsize = isNaN(staff) ? 16 : staff;
+  const lyStaff = parseInt(document.getElementById('defs-ly-staffsize').value, 10);
+  _defsDraft.music.ly_staffsize = isNaN(lyStaff) ? 0 : lyStaff;  // 0 = inherit staffsize
+  _defsDraft.typography.french_spacing = document.getElementById('defs-french-spacing').value;
+  _defsDraft.typography.text_font = document.getElementById('defs-text-font').value;
+  _defsDraft.typography.gabc_font = document.getElementById('defs-gabc-font').value;  // '' = inherit text_font
+  _defsDraft.typography.ly_font = document.getElementById('defs-ly-font').value;      // '' = inherit text_font
+  const tsize = parseFloat(document.getElementById('defs-text-size').value);
+  _defsDraft.typography.text_size = isNaN(tsize) ? 0 : tsize;
+}
+
+// How many text items point at this style — counted through _defsOrigin so
+// the number stays correct after the style is renamed in the draft.
+function _styleUsageCount(currentKey) {
+  const origin = _defsOrigin[currentKey];
+  if (!origin) return 0;
+  return project.data.items.filter(it => it.type === 'text' && it.key === origin).length;
+}
+
+function renderDefsStyles() {
+  const list = document.getElementById('defs-style-list');
+  list.innerHTML = '';
+  Object.keys(_defsDraft.styles).forEach(key => list.appendChild(renderDefsStyleRow(key)));
+  scheduleDefsCheck();
+}
+
+function renderDefsStyleRow(key) {
+  const row = document.createElement('div');
+  row.className = 'style-row';
+  row.dataset.styleKey = key;
+
+  const head = document.createElement('div');
+  head.className = 'style-row-head';
+
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.value = key;
+  nameInput.title = 'Nom du style (interne au bréviaire)';
+  nameInput.addEventListener('change', () => {
+    const oldKey = row.dataset.styleKey;
+    const newKey = nameInput.value.trim();
+    if (newKey === oldKey) return;
+    if (!newKey || Object.prototype.hasOwnProperty.call(_defsDraft.styles, newKey)) {
+      alert(newKey ? `Un style nommé « ${newKey} » existe déjà.` : 'Le nom du style ne peut pas être vide.');
+      nameInput.value = oldKey;
+      return;
+    }
+    // Rebuild the styles object in the same order with the key renamed —
+    // insertion order is what the list renders in.
+    const renamed = {};
+    Object.keys(_defsDraft.styles).forEach(k => {
+      renamed[k === oldKey ? newKey : k] = _defsDraft.styles[k];
+    });
+    _defsDraft.styles = renamed;
+    if (_defsOrigin[oldKey]) { _defsOrigin[newKey] = _defsOrigin[oldKey]; delete _defsOrigin[oldKey]; }
+    renderDefsStyles();
+  });
+  head.appendChild(nameInput);
+
+  const usage = document.createElement('span');
+  usage.className = 'style-usage';
+  const count = _styleUsageCount(key);
+  usage.textContent = count ? `utilisé par ${count} élément(s)` : 'non utilisé';
+  head.appendChild(usage);
+
+  const del = document.createElement('button');
+  del.className = 'btn btn-sm';
+  del.textContent = 'Supprimer';
+  const lastStyle = Object.keys(_defsDraft.styles).length <= 1;
+  if (count) {
+    del.disabled = true;
+    del.title = 'Impossible : des éléments du bréviaire utilisent ce style';
+  } else if (lastStyle) {
+    del.disabled = true;
+    del.title = 'Impossible : il faut au moins un style';
+  }
+  del.addEventListener('click', () => {
+    delete _defsDraft.styles[row.dataset.styleKey];
+    delete _defsOrigin[row.dataset.styleKey];
+    renderDefsStyles();
+  });
+  head.appendChild(del);
+  row.appendChild(head);
+
+  const body = document.createElement('textarea');
+  body.className = 'style-body-input';
+  body.spellcheck = false;
+  body.value = _defsDraft.styles[key];
+  row.appendChild(body);
+
+  const issues = document.createElement('div');
+  issues.className = 'style-issues';
+  row.appendChild(issues);
+
+  const preview = document.createElement('div');
+  preview.className = 'style-preview';
+  row.appendChild(preview);
+  _updateDefsStylePreview(preview, _defsDraft.styles[key]);
+
+  let previewDebounce = null;
+  body.addEventListener('input', () => {
+    _defsDraft.styles[row.dataset.styleKey] = body.value;
+    scheduleDefsCheck();
+    clearTimeout(previewDebounce);
+    previewDebounce = setTimeout(() => _updateDefsStylePreview(preview, body.value), 300);
+  });
+
+  return row;
+}
+
+function _updateDefsStylePreview(previewEl, template) {
+  const n = styleFieldCount(template);
+  const samples = [];
+  for (let i = 1; i <= n; i++) samples.push(n > 1 ? `Exemple ${i}` : 'Exemple de texte');
+  updateTextPreview(previewEl, template, samples);
+}
+
+function scheduleDefsCheck() {
+  clearTimeout(_defsCheckDebounce);
+  _defsCheckDebounce = setTimeout(async () => {
+    const token = ++_defsCheckToken;
+    const res = await api('/api/styles/check', 'POST', { styles: _defsDraft ? _defsDraft.styles : {} });
+    if (token !== _defsCheckToken || !_defsDraft || res.error) return;
+    document.querySelectorAll('#defs-style-list .style-row').forEach(row => {
+      const found = (res.issues || {})[row.dataset.styleKey] || [];
+      const el = row.querySelector('.style-issues');
+      el.classList.toggle('visible', found.length > 0);
+      el.textContent = found.map(w => '⚠ ' + w).join('\n');
+    });
+  }, 350);
+}
+
+function addDefsStyle() {
+  let name = 'nouveau';
+  for (let i = 2; Object.prototype.hasOwnProperty.call(_defsDraft.styles, name); i++) name = 'nouveau' + i;
+  _defsDraft.styles[name] = '{#1\\par}';
+  renderDefsStyles();
+  const rows = document.querySelectorAll('#defs-style-list .style-row');
+  const last = rows[rows.length - 1];
+  if (last) { last.scrollIntoView({ block: 'nearest' }); last.querySelector('input').select(); }
+}
+
+function applyDefsEditor() {
+  _readDefsPageFields();
+  for (const [field, label] of [['margin', 'Marges'], ['gutter', 'Reliure']]) {
+    const v = _defsDraft.page[field];
+    if (v && !TEX_DIM_RE.test(v)) {
+      alert(`${label} : « ${v} » n'est pas une dimension valide — utilisez par exemple 1.5cm ou 12mm (point décimal, pas de virgule).`);
+      return;
+    }
+  }
+  if (!Object.keys(_defsDraft.styles).length) {
+    alert('Il faut au moins un style de texte.');
+    return;
+  }
+  // Remap item keys through renames (origin key at open → key it has now).
+  const remap = {};
+  Object.keys(_defsOrigin).forEach(cur => {
+    if (_defsOrigin[cur] !== cur) remap[_defsOrigin[cur]] = cur;
+  });
+  project.data.items.forEach(it => {
+    if (it.type === 'text' && remap[it.key]) it.key = remap[it.key];
+  });
+  project.data.defs = _defsDraft;
+  _defsDraft = null;
+  document.getElementById('defs-modal').classList.remove('open');
+  closeEditPanel(); // its style dropdown may list renamed/removed styles
+  _lyPngCache.clear();    // staffsize/ly_font may have changed → recompile previews
+  _applyWysiwygFonts();   // text items reflect a changed body font
+  markDirty();
+  renderItemList();
+  _checkProjectFonts();   // a newly-typed font may be unavailable here
+}
+
+// ── Export-template editor ───────────────────────────────────────────────
+
+async function openExportTemplate() {
+  closeSettings();
+  const res = await api('/api/export-template');
+  document.getElementById('tmpl-custom-badge').style.display = res.is_custom ? '' : 'none';
+  document.getElementById('tmpl-reset-btn').disabled = !res.is_custom;
+  document.getElementById('tmpl-editor').value = res.content || '';
+  _tmplStatus(null);
+  document.getElementById('template-modal').style.display = 'flex';
+}
+
+function closeExportTemplate() {
+  document.getElementById('template-modal').style.display = 'none';
+}
+
+// kind: 'err' | 'ok' | 'busy' | null (hide)
+function _tmplStatus(kind, text) {
+  const el = document.getElementById('tmpl-status');
+  if (!kind) { el.style.display = 'none'; return; }
+  const colors = { err: ['#fdf0ee', '#b3402a'], ok: ['#f0f6ec', '#4a7a33'], busy: ['#faf6ec', '#8a6d1a'] };
+  el.style.display = '';
+  el.style.background = colors[kind][0];
+  el.style.color = colors[kind][1];
+  el.textContent = text;
+  el.scrollTop = el.scrollHeight;
+}
+
+async function saveExportTemplate() {
+  const res = await api('/api/export-template', 'POST', { content: document.getElementById('tmpl-editor').value });
+  if (res.errors && res.errors.length) {
+    // Static verification failed — the template is not saved (it would
+    // break every future export). Fix and re-save.
+    _tmplStatus('err', '✗ Modèle refusé (non enregistré) :\n' + res.errors.join('\n'));
+    return;
+  }
+  if (res.error) { _tmplStatus('err', '✗ ' + res.error); return; }
+  closeExportTemplate();
+}
+
+async function verifyExportTemplate() {
+  const btn = document.getElementById('tmpl-verify-btn');
+  btn.disabled = true;
+  document.getElementById('tmpl-save-btn').disabled = true;
+  _tmplStatus('busy', 'Vérification en cours… compilation d’un mini-document d’essai (gregorio + lilypond + lualatex), cela peut prendre une minute');
+  try {
+    const res = await api('/api/export-template/verify', 'POST', { content: document.getElementById('tmpl-editor').value });
+    if (res.success) {
+      _tmplStatus('ok', `✓ Modèle vérifié — le document d’essai compile (${res.seconds} s)`);
+    } else {
+      const lines = String(res.log || res.error || '').split('\n').filter(l => l.trim());
+      _tmplStatus('err', '✗ Échec de la compilation d’essai :\n' + lines.slice(-25).join('\n'));
+    }
+  } finally {
+    btn.disabled = false;
+    document.getElementById('tmpl-save-btn').disabled = false;
+  }
+}
+
+async function resetExportTemplate() {
+  if (!confirm('Restaurer le modèle par défaut ? Votre modèle personnalisé sera supprimé.')) return;
+  await api('/api/export-template/reset', 'POST', {});
+  const res = await api('/api/export-template');
+  document.getElementById('tmpl-editor').value = res.content || '';
+  document.getElementById('tmpl-custom-badge').style.display = 'none';
+  document.getElementById('tmpl-reset-btn').disabled = true;
+  _tmplStatus(null);
 }
 
 async function detectLualatexModal() {
@@ -1011,55 +2769,10 @@ async function openHelp() {
 }
 function closeHelp() { document.getElementById('help-modal').classList.remove('open'); }
 
-// ── Template editor ───────────────────────────────────────────────────────
-
-let _tmplCm = null;
-
-async function openTemplate() {
-  closeSettings();
-  const res = await api('/api/template');
-  const modal = document.getElementById('template-modal');
-  modal.style.display = 'flex';
-  document.getElementById('tmpl-custom-badge').style.display = res.is_custom ? '' : 'none';
-  document.getElementById('tmpl-reset-btn').disabled = !res.is_custom;
-  if (!_tmplCm) {
-    const wrap = document.getElementById('tmpl-cm-wrap');
-    _tmplCm = CodeMirror(wrap, {
-      lineNumbers: true, lineWrapping: true,
-      indentWithTabs: false, tabSize: 2,
-      value: res.content,
-    });
-    setTimeout(() => _tmplCm.refresh(), 50);
-  } else {
-    _tmplCm.setValue(res.content);
-  }
-}
-
-function closeTemplate() {
-  document.getElementById('template-modal').style.display = 'none';
-}
-
-async function saveTemplate() {
-  await api('/api/template', 'POST', { content: _tmplCm.getValue() });
-  document.getElementById('tmpl-custom-badge').style.display = '';
-  document.getElementById('tmpl-reset-btn').disabled = false;
-  closeTemplate();
-}
-
-async function resetTemplate() {
-  if (!confirm('Restaurer le modèle par défaut ? Votre modèle personnalisé sera supprimé.')) return;
-  await api('/api/template/reset', 'POST', {});
-  const res = await api('/api/template');
-  _tmplCm.setValue(res.content);
-  document.getElementById('tmpl-custom-badge').style.display = 'none';
-  document.getElementById('tmpl-reset-btn').disabled = true;
-}
-
 // ── Heartbeat ─────────────────────────────────────────────────────────────
 
 setInterval(() => fetch('/api/heartbeat', { method: 'POST' }).catch(() => {}), 30000);
 
-// Prompt before navigating away (also fires on tab close — unavoidable).
 window.addEventListener('beforeunload', e => { if (_updating) return; e.preventDefault(); return e.returnValue = ''; });
 
 // ── Keyboard shortcuts ───────────────────────────────────────────────────
@@ -1067,22 +2780,9 @@ window.addEventListener('beforeunload', e => { if (_updating) return; e.preventD
 document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 's') {
     e.preventDefault();
-    saveFile();
+    saveProject();
   }
-  if (e.key === 'Escape') { closeSettings(); closeHelp(); closeTemplate(); }
-});
-
-// ── Log toggle ───────────────────────────────────────────────────────────
-
-// Drop onto the tree background moves to root
-document.getElementById('tree').addEventListener('dragover', e => {
-  e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
-});
-document.getElementById('tree').addEventListener('drop', e => {
-  e.preventDefault();
-  const src = e.dataTransfer.getData('text/plain');
-  if (src) moveFile(src, '');
+  if (e.key === 'Escape') { closeSettings(); closeHelp(); closeExportTemplate(); closeDefsEditor(); closeRelinkModal(); closeEditPanel(); }
 });
 
 document.getElementById('log-toggle').addEventListener('click', () => {
@@ -1091,102 +2791,6 @@ document.getElementById('log-toggle').addEventListener('click', () => {
   const isOpen = out.classList.toggle('visible');
   arrow.classList.toggle('open', isOpen);
 });
-
-// ── Utility ──────────────────────────────────────────────────────────────
-
-function esc(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-// ── Panel resizers ────────────────────────────────────────────────────────
-
-(function() {
-  function makeDrag(handle, onMove, onDone) {
-    handle.addEventListener('mousedown', e => {
-      e.preventDefault();
-      handle.classList.add('dragging');
-      document.body.style.userSelect = 'none';
-      const move = e => onMove(e);
-      const up = () => {
-        handle.classList.remove('dragging');
-        document.body.style.userSelect = '';
-        document.removeEventListener('mousemove', move);
-        document.removeEventListener('mouseup', up);
-        if (onDone) onDone();
-      };
-      document.addEventListener('mousemove', move);
-      document.addEventListener('mouseup', up);
-    });
-  }
-
-  const sidebar = document.getElementById('sidebar');
-  makeDrag(document.getElementById('sidebar-resizer'), e => {
-    const w = Math.max(120, Math.min(520, e.clientX));
-    sidebar.style.width = w + 'px';
-  }, refreshPreview);
-
-  const preview = document.getElementById('preview');
-  makeDrag(document.getElementById('preview-resizer'), e => {
-    const top = preview.getBoundingClientRect().top;
-    const h = Math.max(40, Math.min(window.innerHeight * 0.75, e.clientY - top));
-    preview.style.maxHeight = h + 'px';
-    preview.style.minHeight = h + 'px';
-  }, refreshPreview);
-
-  let resizeTimer;
-  window.addEventListener('resize', () => {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(refreshPreview, 150);
-  });
-})();
-
-// ── Export all ───────────────────────────────────────────────────────────
-
-function exportAll() {
-  const btn = document.getElementById('btn-export-all');
-  const logOutput = document.getElementById('log-output');
-  const logArrow = document.getElementById('log-arrow');
-
-  btn.disabled = true;
-  logOutput.classList.add('visible');
-  logArrow.classList.add('open');
-  logOutput.innerHTML = '<span class="log-spin">Démarrage de l\'export…</span>\n';
-
-  const es = new EventSource('/api/compile-all');
-
-  es.onmessage = ({ data }) => {
-    const msg = JSON.parse(data);
-
-    if (msg.error) {
-      logOutput.innerHTML += `<span class="log-err">Erreur : ${esc(msg.error)}</span>\n`;
-      es.close(); btn.disabled = false; return;
-    }
-
-    if (msg.total !== undefined && !msg.done && !msg.index) {
-      logOutput.innerHTML = `<span class="log-spin">Export de ${msg.total} fichier(s)…</span>\n`;
-    }
-
-    if (msg.index !== undefined) {
-      const cls = msg.success ? 'log-ok' : 'log-err';
-      const sym = msg.success ? '✓' : '✗';
-      logOutput.innerHTML += `<span class="${cls}">${sym} ${esc(msg.path)}</span> <span style="opacity:.45">(${msg.index}/${msg.total})</span>\n`;
-      logOutput.scrollTop = logOutput.scrollHeight;
-    }
-
-    if (msg.done) {
-      const allOk = msg.succeeded === msg.total;
-      logOutput.innerHTML += `\n<span class="${allOk ? 'log-ok' : 'log-err'}">Terminé : ${msg.succeeded}/${msg.total} réussis</span>\n`;
-      logOutput.scrollTop = logOutput.scrollHeight;
-      loadTree();
-      es.close(); btn.disabled = false;
-    }
-  };
-
-  es.onerror = () => {
-    logOutput.innerHTML += '<span class="log-err">Erreur de connexion</span>\n';
-    es.close(); btn.disabled = false;
-  };
-}
 
 // ── Auto-update ──────────────────────────────────────────────────────────
 
@@ -1201,9 +2805,9 @@ async function checkForUpdate() {
 }
 
 async function applyUpdate() {
-  if (isDirty && currentFile) {
+  if (isDirty && project) {
     if (!confirm('Des modifications non enregistrées seront perdues. Enregistrer avant de mettre à jour ?')) return;
-    await saveFile();
+    await saveProject();
   }
   _updating = true;
   const btn = document.getElementById('btn-do-update');
