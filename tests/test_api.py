@@ -246,6 +246,11 @@ class TestFonts(AppTestCase):
         m = self.appmod
         self.addCleanup(setattr, m, '_font_loads', m._font_loads)
         self.addCleanup(setattr, m, '_luaotfload_refresh', m._luaotfload_refresh)
+        # No toolchain on CI: also neutralize the lualatex lookup, else the route
+        # bails with ExportError before it ever reaches the stubbed _font_loads.
+        self.addCleanup(setattr, m.exporter_module, '_tool_path',
+                        m.exporter_module._tool_path)
+        m.exporter_module._tool_path = lambda *a, **k: 'lualatex'
         m._font_loads = lambda lx, f: self._loads.pop(0)
         m._luaotfload_refresh = lambda: True
         self._loads = [False, True]                 # miss, then hit after refresh
