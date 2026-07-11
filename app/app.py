@@ -161,7 +161,7 @@ def _macos_native_dialog(kind, filetypes=None, default_name=None):
                 script = 'POSIX path of (choose file with prompt "Choisir un fichier")'
         r = subprocess.run(
             ['osascript', '-e', script],
-            capture_output=True, text=True, timeout=300,
+            capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=300,
         )
         return r.stdout.strip() if r.returncode == 0 else ''
     except Exception:
@@ -584,7 +584,7 @@ def api_ly_preview():
         cmd.append(ly_file)
         try:
             result = subprocess.run(cmd, cwd=tmpdir, env=env,
-                                    capture_output=True, text=True, timeout=180)
+                                    capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=180)
         except subprocess.TimeoutExpired:
             return jsonify({'ok': False, 'error': 'Compilation interrompue après 180 s'})
         png_path = os.path.join(tmpdir, 'apercu.cropped.png')
@@ -665,7 +665,7 @@ def api_image_preview():
             r = subprocess.run(
                 [gs, '-q', '-dNOPAUSE', '-dBATCH', '-dSAFER', '-sDEVICE=png16m',
                  '-r120', '-dFirstPage=1', '-dLastPage=1', '-o', out, path],
-                capture_output=True, text=True, timeout=60)
+                capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
         except subprocess.TimeoutExpired:
             return jsonify({'error': 'Rendu PDF interrompu après 60 s'}), 500
         if r.returncode != 0 or not os.path.isfile(out):
@@ -704,7 +704,7 @@ def api_available_fonts():
     try:
         r = subprocess.run([lilypond_bin, '-dshow-available-fonts', 'x'],
                            env=exporter_module._font_env(),
-                           capture_output=True, text=True, timeout=60)
+                           capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
     except (subprocess.TimeoutExpired, OSError) as e:
         return jsonify({'fonts': [], 'error': str(e)}), 200
     fonts = set()
@@ -735,7 +735,7 @@ def _font_loads(lualatex, font):
         r = subprocess.run(
             [lualatex, '--interaction=nonstopmode', 'f.tex'],
             cwd=d, env=exporter_module._font_env(), capture_output=True,
-            text=True, timeout=120)
+            text=True, encoding='utf-8', errors='replace', timeout=120)
         log = r.stdout + (r.stderr or '')
     # fontspec's own error strings are the ground truth for "can't load this".
     return 'cannot be found' not in log and 'not loadable' not in log
@@ -762,7 +762,7 @@ def _luaotfload_refresh(force=False):
     cmd = ['luaotfload-tool', '--update'] + (['--force'] if force else [])
     try:
         subprocess.run(cmd, env=exporter_module._font_env(),
-                       capture_output=True, text=True, timeout=180)
+                       capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=180)
     except (OSError, subprocess.TimeoutExpired):
         return False   # tool absent/hung: nothing gained, don't retry
     return True

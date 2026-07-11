@@ -24,7 +24,8 @@ class TestInlineJs(unittest.TestCase):
     def test_inline_script_parses(self):
         scripts = self._scripts()
         self.assertTrue(scripts, 'no inline <script> found in index.html')
-        with tempfile.NamedTemporaryFile('w', suffix='.js', delete=False) as f:
+        with tempfile.NamedTemporaryFile('w', suffix='.js', delete=False,
+                                         encoding='utf-8') as f:
             f.write('\n'.join(scripts))
             path = f.name
         try:
