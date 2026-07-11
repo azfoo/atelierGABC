@@ -567,7 +567,7 @@ def export_project(project_path, project_data, settings, template_path=None):
                  f'--jobname={stem}',
                  os.path.basename(tex_path)],
                 cwd=out_dir, env=env,
-                capture_output=True, text=True, timeout=600,
+                capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=600,
             )
             returncode = result.returncode
             run_log = result.stdout + (result.stderr or '')

@@ -41,12 +41,16 @@ def main():
         with open(conf, encoding='utf-8') as f:
             print('--- generated fonts.conf ---\n' + f.read())
 
+    # Capture bytes and decode ourselves: LilyPond's font dump contains bytes
+    # that are neither valid UTF-8 (macOS) nor the Windows ANSI codepage, so
+    # text=True would crash before we could inspect the output.
     out = subprocess.run([lily, '-dshow-available-fonts', 'x'],
-                         env=env, capture_output=True, text=True, timeout=300)
-    log = (out.stdout + out.stderr).lower()
+                         env=env, capture_output=True, timeout=300)
+    text = (out.stdout + out.stderr).decode('utf-8', 'replace')
+    log = text.lower()
     missing = [n for n in NEEDLES if n not in log]
     if missing:
-        print((out.stdout + out.stderr)[-4000:])
+        print(text[-4000:])
         sys.exit('FAIL: LilyPond/Pango does not see bundled families: %s'
                  % ', '.join(missing))
     print('OK: LilyPond/Pango sees every bundled family: %s' % ', '.join(NEEDLES))
