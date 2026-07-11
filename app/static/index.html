@@ -2023,6 +2023,7 @@ function renderFileRow(item, index, field, label, ext, wrapped, opts) {
   linkBtn.addEventListener('click', async () => {
     const url = opts.browseUrl || ('/api/browse-linked-file?ext=' + encodeURIComponent(ext));
     const res = await _browseApi(url);
+    if (res && res.error) { alert(res.error); return; }
     if (res && res.path) {
       if (opts.accept && !opts.accept.some(e => res.path.toLowerCase().endsWith(e))) {
         alert(opts.rejectMsg || 'Format de fichier non pris en charge.');
@@ -2067,10 +2068,23 @@ function renderFileRow(item, index, field, label, ext, wrapped, opts) {
 
   const openBtn = document.createElement('button');
   openBtn.className = 'btn btn-sm';
-  openBtn.textContent = 'Ouvrir';
-  if (opts.openTitle) openBtn.title = opts.openTitle;
   openBtn.disabled = !item[field] || missing;
-  openBtn.addEventListener('click', () => api('/api/open-external', 'POST', { path: item[field] }));
+  if (createKind) {
+    // gabc/.ly are edited in the built-in editor — opening them in an external
+    // app is pointless (macOS has no app for .gabc, so "Ouvrir" did nothing).
+    openBtn.textContent = 'Modifier';
+    openBtn.title = 'Modifier dans l\'éditeur intégré';
+    openBtn.addEventListener('click', () => openEditPanel(index));
+  } else {
+    // A genuine external file (.myr source, image): open in its OS default app,
+    // and surface the error if there isn't one instead of failing silently.
+    openBtn.textContent = 'Ouvrir';
+    if (opts.openTitle) openBtn.title = opts.openTitle;
+    openBtn.addEventListener('click', async () => {
+      const r = await api('/api/open-external', 'POST', { path: item[field] });
+      if (r && r.error) alert('Impossible d\'ouvrir le fichier : ' + r.error);
+    });
+  }
   row.appendChild(openBtn);
 
   return row;
