@@ -138,6 +138,77 @@ def save_settings_data(data):
         json.dump(data, f, indent=2)
 
 
+# macOS `choose file of type {...}` matches its list as UTIs, NOT filename
+# extensions — so a raw extension like "gabc" matches nothing and greys every
+# file (the "rien ne se passe après Lier…" bug). We instead ask LaunchServices
+# what THIS Mac resolves a .<ext> file to (mdls on a throwaway file) and filter
+# by that. It's self-calibrating: the user's real files share the same
+# resolution, so the filter matches them precisely while excluding other text
+# formats like .tex. Verified on 10.14: a .gabc → com.unknown.gabc and that
+# filter greys .tex/.pdf while admitting .gabc.
+#
+# Fallback if resolution ever fails: a known conforming system UTI for the text
+# formats (verified: .gabc/.ly conform to public.plain-text), else an
+# unfiltered picker + caller-side extension validation.
+_MACOS_UTI_FALLBACK = {
+    'gabc': 'public.plain-text',
+    'ly': 'public.plain-text',
+}
+
+_macos_uti_cache = {}
+
+
+def _resolve_macos_uti(ext):
+    """Return the UTI this Mac assigns to a .<ext> file, or None if undetermined.
+    Cached per session; probes a throwaway temp file via `mdls`."""
+    if ext in _macos_uti_cache:
+        return _macos_uti_cache[ext]
+    uti = None
+    try:
+        with tempfile.NamedTemporaryFile('w', suffix='.' + ext, delete=False,
+                                         encoding='utf-8') as f:
+            f.write('probe\n')
+            probe = f.name
+        try:
+            r = subprocess.run(
+                ['mdls', '-name', 'kMDItemContentType', '-raw', probe],
+                capture_output=True, text=True, encoding='utf-8',
+                errors='replace', timeout=10,
+            )
+            out = (r.stdout or '').strip()
+            if r.returncode == 0 and out and out != '(null)':
+                uti = out
+        finally:
+            try:
+                os.unlink(probe)
+            except OSError:
+                pass
+    except Exception:
+        uti = None
+    _macos_uti_cache[ext] = uti
+    return uti
+
+
+def _macos_type_for_ext(ext):
+    """Best UTI to filter a picker on for .<ext>: the live LaunchServices
+    resolution, else a known conforming fallback, else None (show all files)."""
+    return _resolve_macos_uti(ext) or _MACOS_UTI_FALLBACK.get(ext)
+
+
+# The full set of extensions the composer's pickers filter on — resolved once at
+# startup (see _warm_macos_uti_cache) so the first dialog isn't delayed by mdls.
+_MACOS_PICKER_EXTS = ('gabc', 'ly', 'musicxml', 'myr', 'breviaire')
+
+
+def _warm_macos_uti_cache():
+    """Pre-resolve the known picker extensions so their first dialog is instant.
+    No-op off macOS; each result is cached by _resolve_macos_uti."""
+    if sys.platform != 'darwin':
+        return
+    for ext in _MACOS_PICKER_EXTS:
+        _resolve_macos_uti(ext)
+
+
 def _macos_native_dialog(kind, filetypes=None, default_name=None):
     """File/folder picker via osascript — no main-thread constraint on macOS."""
     try:
@@ -150,9 +221,14 @@ def _macos_native_dialog(kind, filetypes=None, default_name=None):
                 f'{name_clause})'
             )
         else:
-            exts = [p[2:] for _, p in (filetypes or []) if p not in ('*.*', '*')]
-            if exts:
-                type_list = '{' + ', '.join(f'"{e}"' for e in exts) + '}'
+            # Filter by UTI when every requested extension resolves to one (see
+            # _macos_type_for_ext); otherwise show all files and let the caller
+            # validate the extension — never fall back to `choose file of type`
+            # with a raw extension, which greys everything.
+            exts = [p[2:].lower() for _, p in (filetypes or []) if p not in ('*.*', '*')]
+            utis = [_macos_type_for_ext(e) for e in exts]
+            if exts and all(utis):
+                type_list = '{' + ', '.join(f'"{u}"' for u in dict.fromkeys(utis)) + '}'
                 script = (
                     f'POSIX path of (choose file of type {type_list}'
                     f' with prompt "Choisir un fichier")'
@@ -339,6 +415,10 @@ def api_browse_linked_file():
     filetypes.append(('Tous les fichiers', '*.*'))
     try:
         path = _tk_dialog('file', filetypes=filetypes)
+        # macOS shows all files (see _macos_native_dialog), so enforce the
+        # extension here rather than relying on the picker to filter it.
+        if path and ext and not path.lower().endswith('.' + ext.lower()):
+            return jsonify({'path': '', 'error': f'Veuillez choisir un fichier .{ext}.'})
         return jsonify({'path': path})
     except Exception as e:
         return jsonify({'path': '', 'error': str(e)})
@@ -994,10 +1074,15 @@ def api_reset_export_template():
 def _open_with_os_default(path):
     if sys.platform == 'win32':
         os.startfile(path)
-    elif sys.platform == 'darwin':
-        subprocess.Popen(['open', path])
-    else:
-        subprocess.Popen(['xdg-open', path])
+        return
+    # Use `open`/`xdg-open` synchronously and check the exit code: a file with
+    # no associated app (e.g. a .myr on a Mac without Harmony Assistant) fails
+    # silently under Popen, which read to the user as "Ouvrir ne fait rien".
+    launcher = 'open' if sys.platform == 'darwin' else 'xdg-open'
+    r = subprocess.run([launcher, path], capture_output=True, text=True,
+                       encoding='utf-8', errors='replace')
+    if r.returncode != 0:
+        raise OSError(r.stderr.strip() or 'aucune application associée à ce fichier')
 
 
 @app.route('/api/open-external', methods=['POST'])
@@ -1100,5 +1185,6 @@ if __name__ == '__main__':
         threading.Thread(target=_check_for_updates_bg, daemon=True).start()
 
     threading.Thread(target=_heartbeat_monitor, daemon=True).start()
+    threading.Thread(target=_warm_macos_uti_cache, daemon=True).start()
     threading.Thread(target=open_browser, daemon=True).start()
     app.run(host='127.0.0.1', port=PORT, debug=False, threaded=True)

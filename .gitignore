@@ -7,6 +7,8 @@ __pycache__/
 
 # Dev settings (contain local machine paths)
 app/settings.json
+# Dev-mode user copy of the export template (lives in _USER_DIR = app/)
+app/breviaire.tex.j2
 
 # LaTeX / Gregorio build artefacts
 *.aux
@@ -23,3 +25,12 @@ tmp-gre/
 dist/
 build/
 releases/
+
+# Spike scratch (local TeX/Lilypond installs — hundreds of MB, never source)
+spike-tmp/
+non-docker/
+# Stage-A app-shell test venv (created by spike-mac-appshell.sh)
+.venv-appshell/
+
+# macOS resource-fork files
+._*

@@ -67,5 +67,9 @@ if sys.platform == 'darwin':
         info_plist={
             'NSHighResolutionCapable': True,
             'LSUIElement': False,
+            # Support macOS 10.14 (Mojave) — the user's fleet includes 2012
+            # Macs. The frozen shell was verified running on 10.14 (Phase 0,
+            # 2026-07-11); this declares that floor to the OS/installer.
+            'LSMinimumSystemVersion': '10.14',
         },
     )
